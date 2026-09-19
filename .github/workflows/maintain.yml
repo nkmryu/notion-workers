@@ -2,8 +2,8 @@ name: Maintain Notion diary pages
 
 on:
   schedule:
-    # cron は UTC 指定。JST では 0:05 と 7:00 に実行する。
-    - cron: "5 15 * * *"
+    # cron は UTC 指定。JST では 2:00 に実行し、7:00 は失敗時の再試行として同じ処理を走らせる。
+    - cron: "0 17 * * *"
     - cron: "0 22 * * *"
 
   workflow_dispatch:

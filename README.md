@@ -55,7 +55,7 @@ Notion 側の繰り返しテンプレート設定はオフにしてください�
 
 ## 定期実行（GitHub Actions）
 
-`.github/workflows/maintain.yml` が JST 0:05 と 7:00（UTC `5 15 * * *` と `0 22 * * *`）に `npm run maintain` を実行します。`workflow_dispatch` で手動実行もできます。`concurrency` で同時実行を防ぎ、同じ週・月のページを二重に作らないようにしています。
+`.github/workflows/maintain.yml` が JST 2:00 と 7:00（UTC `0 17 * * *` と `0 22 * * *`）に `npm run maintain` を実行します。2:00 が本番で、7:00 は 2:00 の実行が失敗したときの再試行です（処理は冪等なので成功時は何もしません）。`workflow_dispatch` で手動実行もできます。`concurrency` で同時実行を防ぎ、同じ週・月のページを二重に作らないようにしています。
 
 リポジトリの Actions secrets に `NOTION_TOKEN` と `NOTION_DATA_SOURCE_ID` を登録してください。テンプレート ID は秘密ではないため、workflow ファイルに直接書いています。
 
