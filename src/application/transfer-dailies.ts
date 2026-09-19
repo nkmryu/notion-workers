@@ -4,7 +4,6 @@ import type { DailyPage } from "../domain/daily";
 import type { DiaryRepository } from "../domain/diary-repository";
 import type { PeriodArchive } from "../domain/period";
 import type { TransferPlan } from "../domain/transfer";
-import type { DailyMarkdown } from "../domain/transfer-markdown";
 
 import {
   createTransferFallbackSection,
@@ -21,12 +20,12 @@ export interface TransferResult<K> {
   readonly fallbackDates: readonly Temporal.PlainDate[];
 }
 
-function readDailyMarkdowns(
+function readDailyBodies(
   diary: DiaryRepository,
   dailyPageIds: readonly string[],
-): Promise<readonly DailyMarkdown[]> {
-  return mapSequentially(dailyPageIds, async function (pageId) {
-    return { pageId, markdown: await diary.getPageMarkdown(pageId) };
+): Promise<readonly string[]> {
+  return mapSequentially(dailyPageIds, function (pageId) {
+    return diary.getPageMarkdown(pageId);
   });
 }
 
@@ -45,12 +44,12 @@ async function transferOne(
   diary: DiaryRepository,
   plan: TransferPlan,
 ): Promise<{ readonly fellBack: boolean }> {
-  const dailies = await readDailyMarkdowns(diary, plan.dailyPageIds);
+  const bodies = await readDailyBodies(diary, plan.dailyPageIds);
 
   try {
     await diary.appendMarkdown(
       plan.destinationPageId,
-      createTransferSection(plan.heading, dailies),
+      createTransferSection(plan.heading, bodies),
     );
     return { fellBack: false };
   } catch (error: unknown) {
@@ -60,7 +59,7 @@ async function transferOne(
     }
     await diary.appendMarkdown(
       plan.destinationPageId,
-      createTransferFallbackSection(plan.heading, plan.dailyPageIds),
+      createTransferFallbackSection(plan.heading, plan.dailyPageIds.map(diary.mentionOf)),
     );
     return { fellBack: true };
   }

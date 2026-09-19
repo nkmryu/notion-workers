@@ -24,6 +24,9 @@ Markdown への変換で失われるものは次のように扱います。
 - Notion がホストする画像・ファイル（署名付き URL で失効する）: 「元ページを参照」の案内文と元 Daily への mention に置換
 - プレビュー展開済みの bookmark / link_preview（Markdown では自ブロックへのリンクになり外部 URL を失う）: ブロック API で URL を引き直し、`[URL](URL)` のリンクに置換
 - それ以外の Markdown 化できないブロック: URL があればリンク、無ければ案内文に置換
+- embed: `[URL](URL)` のリンクに置換（参照先を Refs で拾えるようにする）
+
+これらの置換は `infrastructure/notion` が `getPageMarkdown` の内側で行い、ドメインは正規化済みの Markdown だけを扱います。
 - 転記先が書式検証エラー（`validation_error`）を返した日: 見出しと「元ページを参照」の注記だけを追記し、次回以降は転記済みとして扱う
 
 ## ページ種別
@@ -48,10 +51,9 @@ src/
     weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
     jst.ts           JST の暦日（Temporal.PlainDate）への変換
     transfer.ts      転記計画（どの Daily をどの期間ページへ）と、見出しからの転記状態の導出
-    transfer-markdown.ts    転記セクションの Markdown 組み立て
-    refs.ts          Refs の収集・タイトルの優先順位・セクション組み立て・生成判定
+    transfer-markdown.ts    転記セクション（見出し + 本文、省略時の注記）の組み立て
+    refs.ts          Refs の収集（本文のリンクのうち内部リンクを除く）・タイトルの優先順位・セクション組み立て・生成判定
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
-    notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧、作成、リネーム、ロック、本文の読み書き）と ContentRejectedError
   application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
     run-maintenance.ts      1 実行の流れ（Daily → Weekly → Monthly）
@@ -65,7 +67,7 @@ src/
     notion/
       diary-repository.ts   DiaryRepository の Notion SDK 実装。種別ごとの取得、テンプレートからの作成、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
       page-mapping.ts       行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
-      markdown-links.ts     Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
+      markdown-normalization.ts   Markdown API の方言（<unknown/>・<embed>・署名付き URL・自ブロックへのリンク）をドメインが読める Markdown へ正規化
       pacing.ts, error.ts
     web/
       page-title.ts         HTML からのタイトル抽出（og:title → <title>）

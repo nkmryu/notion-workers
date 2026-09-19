@@ -3,9 +3,7 @@ import type { Temporal } from "temporal-polyfill";
 import type { DailyPage } from "./daily";
 import type { PeriodArchive } from "./period";
 
-import { createSectionHeader, stripFencedCode } from "./markdown-section";
-import { extractSectionTitles } from "./markdown-section";
-import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
+import { createSectionHeader, extractSectionTitles, stripFencedCode } from "./markdown-section";
 
 export interface CollectedRef {
   readonly url: string;
@@ -33,9 +31,8 @@ export const REFS_HEADING_TITLE = "Refs";
 // 画像 "![alt](url)" は "!" で始まるため除き、本文のリンクだけを拾う。
 const MARKDOWN_LINK_PATTERN =
   /(?<![!\\])\[((?:\\.|[^\]\\])*)\]\((https?:\/\/[^)\s]+)\)/g;
-// bookmark は <unknown url/>、embed は <embed src> で表現される。video 等のメディアは対象外。
-const BLOCK_URL_PATTERN =
-  /<unknown\b[^>]*\burl="(https?:\/\/[^"]*)"[^>]*\/>|<embed\b[^>]*\bsrc="(https?:\/\/[^"]*)"/g;
+// 日誌の内部リンク（Notion 内のページ・ブロック）は参照ではない。
+const INTERNAL_HOSTNAMES = ["notion.so", "app.notion.com"];
 const MARKDOWN_ESCAPE_PATTERN = /\\(.)/g;
 const REFS_TITLE_SPECIAL_PATTERN = /[\\[\]*_`~|<>]/g;
 
@@ -43,8 +40,19 @@ interface PositionedRef extends CollectedRef {
   readonly index: number;
 }
 
-function isRefTarget(url: string): boolean {
-  return !isNotionInternalUrl(url) && !isSignedFileUrl(url);
+function isInternalUrl(url: string): boolean {
+  if (url.startsWith("/")) {
+    return true;
+  }
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return INTERNAL_HOSTNAMES.some(function (candidate) {
+      return hostname === candidate || hostname.endsWith(`.${candidate}`);
+    });
+  } catch {
+    return false;
+  }
 }
 
 function createCollectedRef(url: string, anchorText: string): CollectedRef {
@@ -58,21 +66,9 @@ function collectLinkRefs(markdown: string): readonly PositionedRef[] {
     function (match) {
       const [, anchorText = "", url = ""] = match;
 
-      return isRefTarget(url)
-        ? [{ ...createCollectedRef(url, anchorText), index: match.index }]
-        : [];
-    },
-  );
-}
-
-function collectBlockUrlRefs(markdown: string): readonly PositionedRef[] {
-  return [...markdown.matchAll(BLOCK_URL_PATTERN)].flatMap<PositionedRef>(
-    function (match) {
-      const url = match[1] ?? match[2] ?? "";
-
-      return isRefTarget(url)
-        ? [{ url, anchorTitle: null, index: match.index }]
-        : [];
+      return isInternalUrl(url)
+        ? []
+        : [{ ...createCollectedRef(url, anchorText), index: match.index }];
     },
   );
 }
@@ -103,10 +99,7 @@ export function collectRefs(markdown: string): readonly CollectedRef[] {
   // コード例に含まれる URL は参照ではないため、収集前にコードブロックを取り除く。
   const prose = stripFencedCode(markdown);
 
-  return [...collectLinkRefs(prose), ...collectBlockUrlRefs(prose)]
-    .toSorted(function (left, right) {
-      return left.index - right.index;
-    })
+  return collectLinkRefs(prose)
     .map(function ({ url, anchorTitle }) {
       return { url, anchorTitle };
     })

@@ -11,13 +11,12 @@ import {
 import { archiveOf, dailyOn as daily } from "./testing";
 
 describe("collectRefs", () => {
-  it("本文リンク・bookmark・embedのURLを初出順で重複なく集める", () => {
-    // 対象3種のURLを文書内の初出順で完全一致の重複なく返すことを保証する。
+  it("本文のリンクを初出順で重複なく集める", () => {
+    // ネストした行や 1 行に複数あるリンクも含め、文書内の初出順で完全一致の重複なく返すことを保証する。
     const markdown = [
       "[first](https://example.com/first)",
-      '<unknown url="https://example.com/bookmark" alt="bookmark"/>',
+      "[https://example.com/bookmark](https://example.com/bookmark)",
       "- toggle",
-      '\t<embed src="https://example.com/embed"></embed>',
       "\t[first again](https://example.com/first)",
       "[second](https://example.com/second) と [third](https://example.com/third)",
     ].join("\n");
@@ -25,7 +24,6 @@ describe("collectRefs", () => {
     expect(collectRefs(markdown)).toEqual([
       { url: "https://example.com/first", anchorTitle: "first" },
       { url: "https://example.com/bookmark", anchorTitle: null },
-      { url: "https://example.com/embed", anchorTitle: null },
       { url: "https://example.com/second", anchorTitle: "second" },
       { url: "https://example.com/third", anchorTitle: "third" },
     ]);
@@ -47,16 +45,13 @@ describe("collectRefs", () => {
     ]);
   });
 
-  it("画像・署名付きファイル・Notion内部リンク・mentionを除外する", () => {
-    // コピー元参照やNotion内部遷移をRefsへ混入させないことを保証する。
+  it("画像・日誌の内部リンク・相対リンクを除外する", () => {
+    // メディアや Notion 内部への遷移を Refs へ混入させないことを保証する。
     const markdown = [
       "![](https://cdn.example.com/image.png)",
-      '<video src="https://cdn.example.com/clip.mp4"></video>',
-      "[document.pdf](https://prod-files-secure.s3.us-west-2.amazonaws.com/a/b/document.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=abc)",
       "[notion](https://www.notion.so/workspace/page)",
       "[app](https://app.notion.com/page)",
-      '<mention-page url="https://app.notion.com/p/abc"/>',
-      '<unknown url="https://app.notion.com/p/abc#def" alt="external_object_instance"/>',
+      "[relative](/relative)",
       "[source](https://example.com/source)",
     ].join("\n");
 

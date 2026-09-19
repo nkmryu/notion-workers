@@ -15,7 +15,7 @@ import { extractSectionTitles } from "../../domain/markdown-section";
 import { isNotionValidationError } from "./error";
 import { lazy } from "../../shared/lazy";
 import { mapSequentially } from "../../shared/sequence";
-import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";
+import { createPageMention, extractBlockLinkIds, normalizeMarkdown } from "./markdown-normalization";
 import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
 import { monthly } from "../../domain/monthly";
 import { weekly } from "../../domain/weekly";
@@ -162,8 +162,9 @@ export function createNotionDiaryRepository(
         },
       );
 
-      return restoreBlockLinks(
+      return normalizeMarkdown(
         response.markdown,
+        pageId,
         new Map(
           blockUrls.flatMap(function ([blockId, url]) {
             return url === null ? [] : [[blockId, url] as const];
@@ -171,6 +172,8 @@ export function createNotionDiaryRepository(
         ),
       );
     },
+
+    mentionOf: createPageMention,
 
     async appendMarkdown(pageId, content) {
       try {
