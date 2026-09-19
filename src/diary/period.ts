@@ -3,7 +3,7 @@ import type { PageAction } from "./daily";
 import type { DailyPage, PeriodArchive, PeriodPage, PeriodType } from "./page";
 
 import { PAGE_ACTION_TYPE } from "./daily";
-import { dateKeyToDate, getJstDateKey } from "./jst-date";
+import { dateKeyToDate, getJstDateKey, parseCreatedTime } from "./jst-date";
 
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
 export interface PeriodDefinition<K> {
@@ -24,6 +24,15 @@ export interface PeriodCreationPlan<K> {
 
 export function keyOfDateKey<K>(period: PeriodDefinition<K>, dateKey: DateKey): K {
   return period.keyOfDate(dateKeyToDate(dateKey));
+}
+
+// 期間ページの期間は、タイトルが読めればタイトルから、読めなければ（テンプレート適用中など）作成日から決める。
+export function resolvePeriodKey<K>(
+  period: PeriodDefinition<K>,
+  page: { readonly title: string; readonly createdTime: string },
+): K {
+  const createdKey = period.keyOfDate(parseCreatedTime(page.createdTime));
+  return period.parseTitle(page.title, period.yearOf(createdKey)) ?? createdKey;
 }
 
 function isSameKey<K>(period: PeriodDefinition<K>, left: K, right: K): boolean {

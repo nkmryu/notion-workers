@@ -4,8 +4,8 @@ import {
   formatCalendarMonthTitle,
   parseCalendarMonthTitle,
 } from "./calendar-month";
-import { resolvePeriodKey } from "./classification";
 import { monthly } from "./monthly";
+import { resolvePeriodKey } from "./period";
 
 describe("月次タイトル", () => {
   it("暦年とゼロ埋めした月を整形する", () => {

@@ -26,11 +26,12 @@ Markdown への変換で失われるものは次のように扱います。
 - それ以外の Markdown 化できないブロック: URL があればリンク、無ければ案内文に置換
 - 転記先が書式検証エラー（`validation_error`）を返した日: 見出しと「元ページを参照」の注記だけを追記し、次回以降は転記済みとして扱う
 
-## ページ分類
+## ページ種別
 
-`type` select が `Weekly` のページを Weekly、`Monthly` のページを Monthly として扱います。Weekly、Monthly の順に優先して判定します。それ以外では、タイトルが `26.07.22（水）` 形式のページだけを Daily とし、作成日ではなくタイトルの日付をリネーム・ロック・定期ページ作成・転記の基準にします。曜日文字は日付の同定には使いません。
+ページの種別は `type` select で決まります。`📝 Daily` を Daily、`Weekly` を Weekly、`Monthly` を Monthly として種別ごとに取得し、それ以外の値や未設定のページ（メモ）はどの処理にも含めません。メモは自動でロックしません。
 
-空でない非日付タイトルはメモとして扱い、リネーム・ロック・定期ページ作成・転記から除外します。メモは自動でロックしません。Weekly と Monthly も Daily の全処理から除外します。テンプレート適用中のページに限り、今日作成された空タイトルを今日の Daily 候補として扱います。
+- Daily の日付はタイトル `26.07.22（水）` から決めます（曜日文字は使いません）。テンプレート適用中で空タイトルなら作成日（JST）を使います。日付でも空でもないタイトルの Daily は不整合として実行を止めます
+- Weekly / Monthly の期間はタイトル `26.W30` / `26.M07` から決め、読めなければ作成日の期間にします
 
 ## コード構成
 
@@ -39,13 +40,12 @@ src/
   main.ts            エントリポイント（npm run maintain）
   config.ts          環境変数から設定と Notion クライアントを組み立てる
   notion/            Notion API との境界。maintenance/diary-store.ts のポートを SDK で実装する
-    client.ts        DiaryStore の実装。レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
-    page.ts          API レスポンス → NotionPage
+    client.ts        DiaryStore の実装。種別ごとの取得、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
+    page.ts          行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
     markdown-links.ts  Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
     pacing.ts, error.ts
   diary/             日誌の規則。API に依存しない純粋関数だけを置く
-    page.ts          ページの型。NotionPage（読んだまま）と、分類済みの DailyPage / WeeklyPage / MonthlyPage、その集合 DiaryPages
-    classification.ts  NotionPage を一度だけ分類して DiaryPages にする（日付・期間キーをここで確定、メモはここで落ちる）
+    page.ts          DailyPage / WeeklyPage / MonthlyPage と、転記状態付きの PeriodArchive
     daily.ts         今日の Daily の作成判定とリネーム・ロックの決定
     period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
     weekly.ts, monthly.ts   period.ts へ渡す ISO 週・暦月の定義
@@ -56,7 +56,7 @@ src/
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
   maintenance/       手続き。diary の判断に従って DiaryStore を呼ぶ。notion/ には依存しない
-    diary-store.ts   DiaryStore ポート（日誌データベースへの 7 操作）と ContentRejectedError
+    diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
     daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
     period.ts        期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）

@@ -14,7 +14,15 @@ import { extractSectionTitles } from "../diary/markdown-section";
 import { isNotionValidationError } from "./error";
 import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";
 import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
-import { parseDataSourceTitleKey, parseNotionPage } from "./page";
+import { monthly } from "../diary/monthly";
+import { weekly } from "../diary/weekly";
+import {
+  PAGE_TYPE_PROPERTY_NAME,
+  PAGE_TYPE_SELECT_NAME,
+  parseDataSourceTitleKey,
+  toDailyPage,
+  toPeriodPage,
+} from "./page";
 
 function createTitleProperty(title: string): {
   readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
@@ -44,6 +52,18 @@ export function createNotionDiaryStore(
     return titleKeyPromise;
   }
 
+  // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
+  function listRowsOfType(selectName: string) {
+    return collectAllDataSourceRows(client, {
+      data_source_id: dataSourceId,
+      result_type: "page",
+      filter: {
+        property: PAGE_TYPE_PROPERTY_NAME,
+        select: { equals: selectName },
+      },
+    });
+  }
+
   // 外部 URL を持つのは bookmark・embed・link_preview の 3 種。それ以外の型は補完対象にしない。
   async function getBlockUrl(blockId: string): Promise<string | null> {
     const block = await client.blocks.retrieve({ block_id: blockId });
@@ -65,14 +85,23 @@ export function createNotionDiaryStore(
   }
 
   return {
-    async listPages() {
-      // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
-      const rows = await collectAllDataSourceRows(client, {
-        data_source_id: dataSourceId,
-        result_type: "page",
-      });
+    async listDailies() {
+      const rows = await listRowsOfType(PAGE_TYPE_SELECT_NAME.daily);
+      return rows.map(toDailyPage);
+    },
 
-      return rows.map(parseNotionPage);
+    async listWeeklies() {
+      const rows = await listRowsOfType(PAGE_TYPE_SELECT_NAME.weekly);
+      return rows.map(function (row) {
+        return toPeriodPage(weekly, row);
+      });
+    },
+
+    async listMonthlies() {
+      const rows = await listRowsOfType(PAGE_TYPE_SELECT_NAME.monthly);
+      return rows.map(function (row) {
+        return toPeriodPage(monthly, row);
+      });
     },
 
     async createPageFromTemplate({ templateId, title }) {

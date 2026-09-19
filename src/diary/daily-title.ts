@@ -5,6 +5,8 @@ import {
   dateKeyToDate,
   formatDateKey,
   getJstCalendarDate,
+  getJstDateKey,
+  parseCreatedTime,
 } from "./jst-date";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -50,4 +52,23 @@ export function parseDailyTitleDateKey(title: string): DateKey | null {
   calendarDateToUtcDate(year, month, day, title);
 
   return formatDateKey({ year, month, day });
+}
+
+// Daily の日付は、タイトルが読めればタイトルから、空タイトル（テンプレート適用中）なら作成日から決める。
+// 日付でも空でもないタイトルの Daily はデータ不整合なので失敗させる。
+export function resolveDailyDateKey(page: {
+  readonly title: string;
+  readonly createdTime: string;
+}): DateKey {
+  const titleDateKey = parseDailyTitleDateKey(page.title);
+
+  if (titleDateKey !== null) {
+    return titleDateKey;
+  }
+
+  if (page.title === "") {
+    return getJstDateKey(parseCreatedTime(page.createdTime));
+  }
+
+  throw new Error(`Daily のタイトルが日付形式ではありません: ${page.title}`);
 }

@@ -3,7 +3,6 @@ import type { DailyMaintenanceResult } from "./daily";
 import type { PeriodMaintenanceResult } from "./period";
 import type { RefsResult } from "./refs";
 
-import { classifyPages } from "../diary/classification";
 import { monthly } from "../diary/monthly";
 import { weekly } from "../diary/weekly";
 import { maintainDailies } from "./daily";
@@ -16,14 +15,14 @@ export interface MaintenanceSummary {
   readonly monthly: PeriodMaintenanceResult<RefsResult>;
 }
 
-// 1 回の実行で全ページを 1 度だけ読んで種別に分け、Daily → Weekly → Monthly の順にそれぞれを最新状態にする。
+// 1 回の実行で Daily → Weekly → Monthly の順にそれぞれを最新状態にする。
 // 各段階は冪等で、途中で失敗しても次回の実行が未完了分だけを処理する。
 export async function runMaintenance(
   config: Config,
   now: Date,
 ): Promise<MaintenanceSummary> {
   const { diary } = config;
-  const { dailies, weeklies, monthlies } = classifyPages(await diary.listPages(), now);
+  const dailies = await diary.listDailies();
 
   return {
     daily: await maintainDailies(diary, config.dailyTemplateId, dailies, now),
@@ -31,7 +30,7 @@ export async function runMaintenance(
       diary,
       { period: weekly, templateId: config.weeklyTemplateId, async beforeLock() {} },
       dailies,
-      weeklies,
+      await diary.listWeeklies(),
       now,
     ),
     monthly: await maintainPeriod(
@@ -45,7 +44,7 @@ export async function runMaintenance(
         },
       },
       dailies,
-      monthlies,
+      await diary.listMonthlies(),
       now,
     ),
   };

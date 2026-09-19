@@ -4,19 +4,24 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 
-import type { NotionPage, PeriodType } from "../diary/page";
+import type { DailyPage, PeriodPage } from "../diary/page";
+import type { PeriodDefinition } from "../diary/period";
 
 import { isFullPage } from "@notionhq/client";
 
+import { resolveDailyDateKey } from "../diary/daily-title";
 import { PERIOD_TYPE } from "../diary/page";
+import { resolvePeriodKey } from "../diary/period";
 
-const PAGE_TYPE_PROPERTY_NAME = "type";
-// 表記ゆれを許すと DB 側の意図しない選択肢へ誤マッチするため、小文字へ正規化せず Notion の select 選択肢と厳密に一致させる。
-const PERIOD_TYPE_BY_SELECT_NAME: Readonly<Record<string, PeriodType>> = {
-  Weekly: PERIOD_TYPE.weekly,
-  Monthly: PERIOD_TYPE.monthly,
-};
+// 種別は type select で表され、Notion 上の選択肢名と厳密に一致させる。
+export const PAGE_TYPE_PROPERTY_NAME = "type";
+export const PAGE_TYPE_SELECT_NAME = {
+  daily: "📝 Daily",
+  [PERIOD_TYPE.weekly]: "Weekly",
+  [PERIOD_TYPE.monthly]: "Monthly",
+} as const;
 
+type Row = QueryDataSourceResponse["results"][number];
 type PageProperties = PageObjectResponse["properties"];
 type DataSourceProperties = DataSourceObjectResponse["properties"];
 
@@ -49,41 +54,39 @@ function parseTitle(properties: PageProperties): string {
     .join("");
 }
 
-function parsePeriodType(properties: PageProperties): PeriodType | null {
-  const typeProperty = properties[PAGE_TYPE_PROPERTY_NAME];
-
-  if (typeProperty === undefined || typeProperty.type !== "select") {
-    return null;
-  }
-
-  const selectName = typeProperty.select?.name;
-  return selectName === undefined
-    ? null
-    : (PERIOD_TYPE_BY_SELECT_NAME[selectName] ?? null);
-}
-
-export function parsePage(page: PageObjectResponse): NotionPage {
-  return {
-    id: page.id,
-    createdTime: page.created_time,
-    title: parseTitle(page.properties),
-    isLocked: page.is_locked,
-    periodType: parsePeriodType(page.properties),
-  };
-}
-
-export function parseDataSourceTitleKey(
-  dataSource: DataSourceObjectResponse,
-): string {
-  return findTitlePropertyKey(dataSource.properties, "data source");
-}
-
-export function parseNotionPage(
-  row: QueryDataSourceResponse["results"][number],
-): NotionPage {
+function requireFullPage(row: Row): PageObjectResponse {
   if (!isFullPage(row)) {
     throw new Error(`query 結果にページ以外が含まれています: ${row.id}`);
   }
 
-  return parsePage(row);
+  return row;
+}
+
+export function parseDataSourceTitleKey(dataSource: DataSourceObjectResponse): string {
+  return findTitlePropertyKey(dataSource.properties, "data source");
+}
+
+export function toDailyPage(row: Row): DailyPage {
+  const page = requireFullPage(row);
+  const title = parseTitle(page.properties);
+
+  return {
+    id: page.id,
+    createdTime: page.created_time,
+    title,
+    isLocked: page.is_locked,
+    dateKey: resolveDailyDateKey({ title, createdTime: page.created_time }),
+  };
+}
+
+export function toPeriodPage<K>(period: PeriodDefinition<K>, row: Row): PeriodPage<K> {
+  const page = requireFullPage(row);
+  const title = parseTitle(page.properties);
+
+  return {
+    id: page.id,
+    title,
+    isLocked: page.is_locked,
+    key: resolvePeriodKey(period, { title, createdTime: page.created_time }),
+  };
 }
