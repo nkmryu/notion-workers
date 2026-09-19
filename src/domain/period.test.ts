@@ -2,59 +2,27 @@ import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 
-import { DailyPage, formatDailyTitle } from "./daily";
 import { monthly } from "./monthly";
-import type { PeriodArchiveProps, PeriodDefinition } from "./period";
-
-import { PeriodArchive, PeriodPage, planMissingPeriodPages } from "./period";
+import { PeriodPage, planMissingPeriodPages } from "./period";
+import { archiveOf, dailyOn as daily, dates, periodPageOf } from "./testing";
 import { weekly } from "./weekly";
 
 // 2026-07-22（水）= 26.W30 / 26.M07
 const today = Temporal.PlainDate.from("2026-07-22");
 
-function daily(text: string): DailyPage {
-  const date = Temporal.PlainDate.from(text);
-  return new DailyPage({
-    id: `daily-${text}`,
-    createdTime: "2026-01-01T00:00:00.000Z",
-    title: formatDailyTitle(date),
-    isLocked: false,
-    date,
-  });
-}
-
-// 検証に関係ない項目は既定値で埋める。title は既定で期待タイトルにし、リネーム判定のテストだけ上書きする。
-function archive<K>(
-  period: PeriodDefinition<K>,
-  props: Partial<PeriodArchiveProps<K>> & { readonly key: K },
-): PeriodArchive<K> {
-  return new PeriodArchive(period, {
-    id: `${period.type}-${period.formatTitle(props.key)}`,
-    title: period.formatTitle(props.key),
-    isLocked: false,
-    transferredDates: [],
-    hasRefs: false,
-    ...props,
-  });
-}
-
-function week(year: number, week: number): PeriodPage<{ year: number; week: number }> {
-  return new PeriodPage(weekly, { id: `weekly-${year}-${week}`, title: "", isLocked: false, key: { year, week } });
+function week(year: number, weekNumber: number): PeriodPage<{ year: number; week: number }> {
+  return periodPageOf(weekly, { year, week: weekNumber });
 }
 
 function month(year: number, monthNumber: number): PeriodPage<Temporal.PlainYearMonth> {
-  return new PeriodPage(monthly, {
-    id: `monthly-${year}-${monthNumber}`,
-    title: "",
-    isLocked: false,
-    key: Temporal.PlainYearMonth.from({ year, month: monthNumber }),
-  });
+  return periodPageOf(monthly, Temporal.PlainYearMonth.from({ year, month: monthNumber }));
 }
 
-function dates(...texts: readonly string[]): readonly Temporal.PlainDate[] {
-  return texts.map(function (text) {
-    return Temporal.PlainDate.from(text);
-  });
+function archive<K>(
+  period: Parameters<typeof archiveOf<K>>[0],
+  props: { readonly key: K; readonly title?: string; readonly isLocked?: boolean; readonly transferredDates?: readonly Temporal.PlainDate[]; readonly hasRefs?: boolean },
+) {
+  return archiveOf(period, props.key, props);
 }
 
 describe("Weekly のアクション決定", () => {

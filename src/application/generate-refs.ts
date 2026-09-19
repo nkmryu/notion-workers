@@ -4,7 +4,7 @@ import type { DailyPage } from "../domain/daily";
 import type { PeriodArchive } from "../domain/period";
 import type { CollectedRef, RefTitleSource, ResolvedRef } from "../domain/refs";
 import type { DiaryRepository } from "../domain/diary-repository";
-import type { PageTitleSource } from "./page-title-source";
+import type { WebPageTitleLookup } from "./web-page-title-lookup";
 
 import { REF_TITLE_SOURCE } from "../domain/refs";
 import { countBy, mapSequentially } from "../shared/sequence";
@@ -26,7 +26,7 @@ export interface RefsResult {
   readonly titleResolution: RefTitleResolutionCounts;
 }
 
-const NO_RESOLUTION: RefTitleResolutionCounts = { anchor: 0, http: 0, fallback: 0 };
+const NO_RESOLUTION: RefTitleResolutionCounts = { anchor: 0, linked_page: 0, url: 0 };
 
 function addCounts(
   left: RefTitleResolutionCounts,
@@ -41,12 +41,12 @@ function addCounts(
 
 // アンカーテキストが無い URL だけページタイトルを引き、出どころごとの件数も数える。
 async function resolveRefTitles(
-  titles: PageTitleSource,
+  titles: WebPageTitleLookup,
   refs: readonly CollectedRef[],
 ): Promise<{ readonly refs: readonly ResolvedRef[]; readonly counts: RefTitleResolutionCounts }> {
   const selected = await mapSequentially(refs, async function (ref) {
-    const httpTitle = ref.anchorTitle === null ? await titles.lookupTitle(ref.url) : null;
-    return selectRefTitle(ref, httpTitle);
+    const linkedPageTitle = ref.anchorTitle === null ? await titles.lookupTitle(ref.url) : null;
+    return selectRefTitle(ref, linkedPageTitle);
   });
 
   return {
@@ -85,12 +85,13 @@ interface RefsOutcome {
 
 async function generateRefsFor(
   diary: DiaryRepository,
-  titles: PageTitleSource,
+  titles: WebPageTitleLookup,
   archive: PeriodArchive<Temporal.PlainYearMonth>,
 ): Promise<RefsOutcome> {
   const markdown = await diary.getPageMarkdown(archive.id);
 
-  // 事前判定に使った転記状態は取得時点の値なので、書き込み直前に読み直した本文で Refs の有無を再確認し、二重生成を防ぐ。
+  // 同じ実行内で Refs を書くのはここだけで、同時実行は workflow の concurrency が防ぐ。
+  // それでも本文を読み直して再確認するのは、手作業で Refs が追記された月への二重生成を防ぐため。
   if (hasRefsSection(markdown)) {
     return { generated: false, counts: NO_RESOLUTION };
   }
@@ -109,7 +110,7 @@ async function generateRefsFor(
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
   diary: DiaryRepository,
-  titles: PageTitleSource,
+  titles: WebPageTitleLookup,
   archives: readonly PeriodArchive<Temporal.PlainYearMonth>[],
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,

@@ -1,21 +1,19 @@
 import "dotenv/config";
 
+import type { WebPageTitleLookup } from "./application/web-page-title-lookup";
 import type { DiaryRepository } from "./domain/diary-repository";
-import type { PageTitleSource } from "./application/page-title-source";
 
 import { Client } from "@notionhq/client";
 
 import { createNotionDiaryRepository } from "./infrastructure/notion/diary-repository";
-import { createWebPageTitleSource } from "./infrastructure/web/page-title-lookup";
+import { createWebPageTitleLookup } from "./infrastructure/web/page-title-lookup";
 
 const NOTION_VERSION = "2026-03-11";
 
-export interface Config {
+// ユースケースが必要とする外部依存の束。実装は infrastructure が提供し、ここで組み立てる。
+export interface Dependencies {
   readonly diary: DiaryRepository;
-  readonly pageTitles: PageTitleSource;
-  readonly dailyTemplateId: string;
-  readonly weeklyTemplateId: string;
-  readonly monthlyTemplateId: string;
+  readonly pageTitles: WebPageTitleLookup;
 }
 
 function getRequiredEnv(name: string): string {
@@ -28,17 +26,21 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
-export function loadConfig(): Config {
+export function loadDependencies(): Dependencies {
   const client = new Client({
     auth: getRequiredEnv("NOTION_TOKEN"),
     notionVersion: NOTION_VERSION,
   });
 
   return {
-    diary: createNotionDiaryRepository(client, getRequiredEnv("NOTION_DATA_SOURCE_ID")),
-    pageTitles: createWebPageTitleSource(),
-    dailyTemplateId: getRequiredEnv("NOTION_TEMPLATE_ID"),
-    weeklyTemplateId: getRequiredEnv("NOTION_WEEKLY_TEMPLATE_ID"),
-    monthlyTemplateId: getRequiredEnv("NOTION_MONTHLY_TEMPLATE_ID"),
+    diary: createNotionDiaryRepository(client, {
+      dataSourceId: getRequiredEnv("NOTION_DATA_SOURCE_ID"),
+      templates: {
+        daily: getRequiredEnv("NOTION_TEMPLATE_ID"),
+        weekly: getRequiredEnv("NOTION_WEEKLY_TEMPLATE_ID"),
+        monthly: getRequiredEnv("NOTION_MONTHLY_TEMPLATE_ID"),
+      },
+    }),
+    pageTitles: createWebPageTitleLookup(),
   };
 }

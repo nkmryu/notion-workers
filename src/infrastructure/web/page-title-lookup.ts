@@ -1,4 +1,4 @@
-import type { PageTitleSource } from "../../application/page-title-source";
+import type { WebPageTitleLookup } from "../../application/web-page-title-lookup";
 
 import { extractHtmlTitle, isHtmlContentType } from "./page-title";
 
@@ -75,7 +75,7 @@ async function fetchRefTitle(url: string): Promise<string | null> {
 }
 
 // 外部サイト固有の障害（タイムアウト・非 HTML・エラー応答）で月次処理全体を止めず、null へ収束させる。
-export function createWebPageTitleSource(): PageTitleSource {
+export function createWebPageTitleLookup(): WebPageTitleLookup {
   return {
     async lookupTitle(url) {
       try {

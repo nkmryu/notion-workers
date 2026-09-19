@@ -2,7 +2,7 @@ import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 import { monthly, formatCalendarMonthTitle, parseCalendarMonthTitle } from "./monthly";
-import { resolvePeriodKey } from "./period";
+import { PeriodPage } from "./period";
 
 describe("月次タイトル", () => {
   it("暦年とゼロ埋めした月を整形する", () => {
@@ -13,10 +13,12 @@ describe("月次タイトル", () => {
   it("タイトルを作成月より優先して解析する", () => {
     // インポート後もタイトルが示す暦月へMonthlyを帰属させることを保証する。
     expect(
-      resolvePeriodKey(monthly, {
+      PeriodPage.fromRecord(monthly, {
+        id: "monthly",
         createdTime: "2026-07-01T00:00:00.000Z",
         title: "25.M12",
-      }),
+        isLocked: false,
+        }).key,
     ).toEqual(Temporal.PlainYearMonth.from({ year: 2025, month: 12 }));
   });
 

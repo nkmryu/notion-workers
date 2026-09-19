@@ -46,8 +46,8 @@ export type WeeklyPage = PeriodPage<IsoWeek>;
 
 export const weekly: PeriodDefinition<IsoWeek> = {
   type: PERIOD_TYPE.weekly,
-  hasBeforeLockStep: false,
-  keyOf: isoWeekOf,
+  requiresRefs: false,
+  periodOf: isoWeekOf,
   compare: compareIsoWeeks,
   formatTitle: formatIsoWeekTitle,
   parseTitle: parseIsoWeekTitle,

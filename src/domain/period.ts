@@ -1,7 +1,7 @@
-import { Temporal } from "temporal-polyfill";
-
 import type { DailyPage } from "./daily";
 import type { PageAction, PeriodType } from "./page";
+
+import { Temporal } from "temporal-polyfill";
 
 import { parseCreatedTime } from "./jst";
 import { PAGE_ACTION_TYPE } from "./page";
@@ -9,9 +9,9 @@ import { PAGE_ACTION_TYPE } from "./page";
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
 export interface PeriodDefinition<K> {
   readonly type: PeriodType;
-  // ロック前に行う工程（Monthly の Refs）を持つか。持つ期間は、工程を飛ばしてロックされたページを補完するため、ロック済みでも状態を読む。
-  readonly hasBeforeLockStep: boolean;
-  readonly keyOf: (date: Temporal.PlainDate) => K;
+  // 閉じる前に Refs を要するか（Monthly）。要する期間は、Refs を飛ばしてロックされたページも補完するため、ロック済みでも転記状態を読む。
+  readonly requiresRefs: boolean;
+  readonly periodOf: (date: Temporal.PlainDate) => K;
   // 符号だけを見る（負: left が前、0: 同じ、正: left が後）。
   readonly compare: (left: K, right: K) => number;
   readonly formatTitle: (key: K) => string;
@@ -40,40 +40,59 @@ export function resolveShortYear(shortYear: number, referenceYear: number): numb
   });
 }
 
+// 永続化されている期間ページの姿。エンティティはここから生成し、期間はタイトルから導出する。
+export interface PeriodPageRecord {
+  readonly id: string;
+  readonly createdTime: string;
+  readonly title: string;
+  readonly isLocked: boolean;
+}
+
 // 期間ページの期間は、タイトルが読めればタイトルから、読めなければ（テンプレート適用中など）作成日から決める。
-export function resolvePeriodKey<K>(
-  period: PeriodDefinition<K>,
-  page: { readonly title: string; readonly createdTime: string },
-): K {
-  const createdKey = period.keyOf(parseCreatedTime(page.createdTime));
-  return period.parseTitle(page.title, period.yearOf(createdKey)) ?? createdKey;
+function resolvePeriodKey<K>(period: PeriodDefinition<K>, record: PeriodPageRecord): K {
+  const createdKey = period.periodOf(parseCreatedTime(record.createdTime));
+  return period.parseTitle(record.title, period.yearOf(createdKey)) ?? createdKey;
 }
 
-export interface PeriodPageProps<K> {
-  readonly id: string;
-  readonly title: string;
-  readonly isLocked: boolean;
-  readonly key: K;
+// 転記状態: どの日を転記済みか、Refs があるか。
+export interface TransferState {
+  readonly transferredDates: readonly Temporal.PlainDate[];
+  readonly hasRefs: boolean;
 }
 
-// 週・月のアーカイブページ。自分の期間の規則（PeriodDefinition）を持ち、期間キー K はタイトルから一度だけ確定する。
+export const EMPTY_TRANSFER_STATE: TransferState = { transferredDates: [], hasRefs: false };
+
+// 週・月のアーカイブページ。自分の期間の規則（PeriodDefinition）を持ち、期間キー K は生成時にタイトルから一度だけ確定する。
 export class PeriodPage<K> {
-  readonly period: PeriodDefinition<K>;
-  readonly id: string;
-  readonly title: string;
-  readonly isLocked: boolean;
-  readonly key: K;
+  private constructor(
+    readonly period: PeriodDefinition<K>,
+    readonly id: string,
+    readonly title: string,
+    readonly isLocked: boolean,
+    readonly key: K,
+  ) {}
 
-  constructor(period: PeriodDefinition<K>, props: PeriodPageProps<K>) {
-    this.period = period;
-    this.id = props.id;
-    this.title = props.title;
-    this.isLocked = props.isLocked;
-    this.key = props.key;
+  static fromRecord<K>(period: PeriodDefinition<K>, record: PeriodPageRecord): PeriodPage<K> {
+    return new PeriodPage(
+      period,
+      record.id,
+      record.title,
+      record.isLocked,
+      resolvePeriodKey(period, record),
+    );
+  }
+
+  // 作成直後のページ。テンプレートの非同期適用でタイトルが未確定なので空とし、同じ実行でリネーム対象にする。
+  static created<K>(period: PeriodDefinition<K>, id: string, key: K): PeriodPage<K> {
+    return new PeriodPage(period, id, "", false, key);
   }
 
   get expectedTitle(): string {
     return this.period.formatTitle(this.key);
+  }
+
+  sameIdentityAs(other: { readonly id: string }): boolean {
+    return this.id === other.id;
   }
 
   isSamePeriodAs(key: K): boolean {
@@ -81,57 +100,74 @@ export class PeriodPage<K> {
   }
 
   contains(date: Temporal.PlainDate): boolean {
-    return this.isSamePeriodAs(this.period.keyOf(date));
+    return this.isSamePeriodAs(this.period.periodOf(date));
   }
 
   // 期間が終わっているか。進行中・未来の期間は閉じない。
   isPast(today: Temporal.PlainDate): boolean {
-    return this.period.compare(this.key, this.period.keyOf(today)) < 0;
+    return this.period.compare(this.key, this.period.periodOf(today)) < 0;
   }
 
   isFuture(today: Temporal.PlainDate): boolean {
-    return this.period.compare(this.key, this.period.keyOf(today)) > 0;
+    return this.period.compare(this.key, this.period.periodOf(today)) > 0;
   }
 
-  withArchiveState(state: {
-    readonly transferredDates: readonly Temporal.PlainDate[];
-    readonly hasRefs: boolean;
-  }): PeriodArchive<K> {
-    return new PeriodArchive(this.period, { ...this, ...state });
+  // もう手を入れないページか。ロック済みで、ロック後に補う工程（Refs）も要らない。転記状態を読む必要が無い。
+  isSettled(): boolean {
+    return this.isLocked && !this.period.requiresRefs;
+  }
+
+  withTransferState(state: TransferState): PeriodArchive<K> {
+    return new PeriodArchive(this, state);
   }
 }
 
-export interface PeriodArchiveProps<K> extends PeriodPageProps<K> {
-  readonly transferredDates: readonly Temporal.PlainDate[];
-  readonly hasRefs: boolean;
-}
+// 転記状態を知った期間ページ。ロックと Refs の判断はこの状態だけで下せる。
+// 同じページの「本文を読む前 / 後」なので、継承ではなく期間ページを内側に持つ。
+export class PeriodArchive<K> {
+  constructor(
+    readonly page: PeriodPage<K>,
+    readonly transferState: TransferState,
+  ) {}
 
-// 期間ページに、その時点の転記状態（どの日を転記済みか・Refs があるか）を添えたもの。
-// ロックと Refs の判断はこの状態だけで下せる。
-export class PeriodArchive<K> extends PeriodPage<K> {
-  readonly transferredDates: readonly Temporal.PlainDate[];
-  readonly hasRefs: boolean;
+  get id(): string {
+    return this.page.id;
+  }
 
-  constructor(period: PeriodDefinition<K>, props: PeriodArchiveProps<K>) {
-    super(period, props);
-    this.transferredDates = props.transferredDates;
-    this.hasRefs = props.hasRefs;
+  get key(): K {
+    return this.page.key;
+  }
+
+  get isLocked(): boolean {
+    return this.page.isLocked;
+  }
+
+  get hasRefs(): boolean {
+    return this.transferState.hasRefs;
+  }
+
+  contains(date: Temporal.PlainDate): boolean {
+    return this.page.contains(date);
+  }
+
+  isPast(today: Temporal.PlainDate): boolean {
+    return this.page.isPast(today);
   }
 
   isTransferred(date: Temporal.PlainDate): boolean {
-    return this.transferredDates.some(function (transferred) {
+    return this.transferState.transferredDates.some(function (transferred) {
       return transferred.equals(date);
     });
   }
 
   // 期間内の終了済み Daily がすべて転記されているか。過去の期間だけが完了し得る。
   isFullyTransferred(dailies: readonly DailyPage[], today: Temporal.PlainDate): boolean {
-    if (!this.isPast(today)) {
+    if (!this.page.isPast(today)) {
       return false;
     }
 
     return dailies.every((daily) => {
-      const isEndedInPeriod = daily.isEnded(today) && this.contains(daily.date);
+      const isEndedInPeriod = daily.isEnded(today) && this.page.contains(daily.date);
       return !isEndedInPeriod || this.isTransferred(daily.date);
     });
   }
@@ -139,28 +175,32 @@ export class PeriodArchive<K> extends PeriodPage<K> {
   // 期間ページを整えて閉じるまでの操作を、適用する順に返す。
   // ロックは「期間が終わり、転記が揃った」ときに限る、という不変条件をここで守る。
   decideActions(dailies: readonly DailyPage[], today: Temporal.PlainDate): readonly PageAction[] {
-    if (this.isFuture(today)) {
+    if (this.page.isFuture(today)) {
       return [];
     }
 
     // 作成直後のページはテンプレート適用でタイトルが未確定なので、同じ実行でリネームしてから閉じる。
     const rename: readonly PageAction[] =
-      this.title === this.expectedTitle
+      this.page.title === this.page.expectedTitle
         ? []
-        : [{ type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle }];
+        : [{ type: PAGE_ACTION_TYPE.rename, title: this.page.expectedTitle }];
     const lock: readonly PageAction[] =
-      !this.isLocked && this.isFullyTransferred(dailies, today)
+      !this.page.isLocked && this.isFullyTransferred(dailies, today)
         ? [{ type: PAGE_ACTION_TYPE.lock }]
         : [];
 
     return [...rename, ...lock];
   }
 
-  // 転記できた日を状態へ足した新しいインスタンスを返す。同じ実行内のロック判定へ反映するため。
+  // 転記できた日を状態へ足した新しいインスタンスを返す。期間外の日は転記計画が作らないので、混入は不整合として失敗させる。
   withTransferred(date: Temporal.PlainDate): PeriodArchive<K> {
-    return new PeriodArchive(this.period, {
-      ...this,
-      transferredDates: [...this.transferredDates, date],
+    if (!this.page.contains(date)) {
+      throw new Error(`${this.page.expectedTitle} の期間外の日付です: ${date.toString()}`);
+    }
+
+    return new PeriodArchive(this.page, {
+      ...this.transferState,
+      transferredDates: [...this.transferState.transferredDates, date],
     });
   }
 }
@@ -171,11 +211,11 @@ export function planMissingPeriodPages<K>(
   existingPages: readonly PeriodPage<K>[],
   today: Temporal.PlainDate,
 ): readonly PeriodCreationPlan<K>[] {
-  const currentKey = period.keyOf(today);
+  const currentKey = period.periodOf(today);
 
   return dailies
     .reduce<readonly PeriodCreationPlan<K>[]>(function (plans, daily) {
-      const key = period.keyOf(daily.date);
+      const key = period.periodOf(daily.date);
       const planned = plans.some(function (plan) {
         return period.compare(plan.key, key) === 0;
       });

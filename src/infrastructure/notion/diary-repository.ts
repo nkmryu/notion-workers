@@ -2,6 +2,7 @@ import type { Client } from "@notionhq/client";
 
 import { ContentRejectedError } from "../../domain/diary-repository";
 import type { DiaryRepository } from "../../domain/diary-repository";
+import type { PeriodType } from "../../domain/page";
 
 import {
   collectAllDataSourceRows,
@@ -33,9 +34,15 @@ function createTitleProperty(title: string): {
 }
 
 // Notion API の平均 3 req/s 制限に合わせ、各操作の後に待機する。429 と 5xx の再試行は SDK が行う。
+export interface NotionDiaryLocation {
+  readonly dataSourceId: string;
+  // 種別ごとのページテンプレート。type select はテンプレートが付ける。
+  readonly templates: Readonly<Record<"daily" | PeriodType, string>>;
+}
+
 export function createNotionDiaryRepository(
   client: Client,
-  dataSourceId: string,
+  { dataSourceId, templates }: NotionDiaryLocation,
 ): DiaryRepository {
   // タイトルプロパティ名は data source ごとに固定なので、1 実行で 1 回だけ取得する。
   const getTitleKey = lazy(async function () {
@@ -47,6 +54,21 @@ export function createNotionDiaryRepository(
 
     return parseDataSourceTitleKey(dataSource);
   });
+
+  async function createFromTemplate(templateId: string, title: string): Promise<string> {
+    const page = await client.pages.create({
+      parent: { type: "data_source_id", data_source_id: dataSourceId },
+      properties: { [await getTitleKey()]: createTitleProperty(title) },
+      template: {
+        type: "template_id",
+        template_id: templateId,
+        timezone: JST_TIME_ZONE,
+      },
+    });
+    await sleep(WRITE_INTERVAL_MS);
+
+    return page.id;
+  }
 
   // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
   function listRowsOfType(selectName: string) {
@@ -100,19 +122,12 @@ export function createNotionDiaryRepository(
       });
     },
 
-    async createPageFromTemplate({ templateId, title }) {
-      const page = await client.pages.create({
-        parent: { type: "data_source_id", data_source_id: dataSourceId },
-        properties: { [await getTitleKey()]: createTitleProperty(title) },
-        template: {
-          type: "template_id",
-          template_id: templateId,
-          timezone: JST_TIME_ZONE,
-        },
-      });
-      await sleep(WRITE_INTERVAL_MS);
+    createDaily(title) {
+      return createFromTemplate(templates.daily, title);
+    },
 
-      return page.id;
+    createPeriodPage(type, title) {
+      return createFromTemplate(templates[type], title);
     },
 
     async renamePage(pageId, title) {

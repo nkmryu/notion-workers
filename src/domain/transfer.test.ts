@@ -1,11 +1,12 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
+import type { PeriodArchive } from "./period";
 import type { IsoWeek } from "./weekly";
 
-import { DailyPage, parseDailyTitle } from "./daily";
+import { DailyPage } from "./daily";
 import { monthly } from "./monthly";
-import { PeriodArchive } from "./period";
+import { archiveOf } from "./testing";
 import { planTransfers } from "./transfer";
 import { weekly } from "./weekly";
 
@@ -16,13 +17,7 @@ function daily(
   title: string,
   createdTime = "2026-07-22T01:00:00.000Z",
 ): DailyPage {
-  const date = parseDailyTitle(title);
-
-  if (date === null) {
-    throw new Error(`テスト用タイトルが日付形式ではありません: ${title}`);
-  }
-
-  return new DailyPage({ id, createdTime, title, isLocked: false, date });
+  return DailyPage.fromRecord({ id, createdTime, title, isLocked: false });
 }
 
 function weeklyPage(
@@ -30,14 +25,7 @@ function weeklyPage(
   transferredDates: readonly Temporal.PlainDate[] = [],
   isLocked = false,
 ): PeriodArchive<IsoWeek> {
-  return new PeriodArchive(weekly, {
-    id: `weekly-${week}`,
-    key: { year: 2026, week },
-    title: `26.W${week}`,
-    isLocked,
-    transferredDates,
-    hasRefs: false,
-  });
+  return archiveOf(weekly, { year: 2026, week }, { id: `weekly-${week}`, isLocked, transferredDates });
 }
 
 describe("Weekly への転記計画", () => {
@@ -113,18 +101,16 @@ describe("Weekly への転記計画", () => {
       ),
     ).toEqual([
       {
-        periodType: "weekly",
         destinationPageId: "weekly-30",
         date: Temporal.PlainDate.from("2026-07-20"),
         dailyPageIds: ["daily-20"],
-        title: "26.07.20（月）",
+        heading: "26.07.20（月）",
       },
       {
-        periodType: "weekly",
         destinationPageId: "weekly-30",
         date: Temporal.PlainDate.from("2026-07-21"),
         dailyPageIds: ["daily-21"],
-        title: "26.07.21（火）",
+        heading: "26.07.21（火）",
       },
     ]);
   });
@@ -151,11 +137,10 @@ describe("Weekly への転記計画", () => {
       ),
     ).toEqual([
       {
-        periodType: "weekly",
         destinationPageId: "weekly-30",
         date: Temporal.PlainDate.from("2026-07-20"),
         dailyPageIds: ["daily-earlier", "daily-later"],
-        title: "26.07.20（月）",
+        heading: "26.07.20（月）",
       },
     ]);
   });
@@ -189,13 +174,8 @@ describe("Weekly への転記計画", () => {
 });
 
 describe("Monthly への転記計画", () => {
-  const monthlyPage = new PeriodArchive(monthly, {
+  const monthlyPage = archiveOf(monthly, Temporal.PlainYearMonth.from({ year: 2026, month: 7 }), {
     id: "monthly-07",
-    key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }),
-    title: "26.M07",
-    isLocked: false,
-    transferredDates: [],
-    hasRefs: false,
   });
 
   it("Weeklyとは独立して同じDailyを同月Monthlyへ計画する", () => {
@@ -208,11 +188,10 @@ pages, [weeklyPage(30, [Temporal.PlainDate.from("2026-07-20")])], today),
     ).toEqual([]);
     expect(planTransfers(pages, [monthlyPage], today)).toEqual([
       {
-        periodType: "monthly",
         destinationPageId: "monthly-07",
         date: Temporal.PlainDate.from("2026-07-20"),
         dailyPageIds: ["daily-20"],
-        title: "26.07.20（月）",
+        heading: "26.07.20（月）",
       },
     ]);
   });

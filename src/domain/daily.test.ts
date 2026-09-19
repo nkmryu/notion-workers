@@ -1,30 +1,16 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import {
-  DailyPage,
-  formatDailyTitle,
-  parseDailyTitle,
-  shouldCreateTodayPage,
-} from "./daily";
+import { DailyPage, formatDailyTitle, parseDailyTitle, shouldCreateTodayPage } from "./daily";
+import { dailyOn as daily } from "./testing";
 
 const today = Temporal.PlainDate.from("2026-07-22");
-
-function daily(date: string, props: { readonly title?: string; readonly isLocked?: boolean } = {}): DailyPage {
-  return new DailyPage({
-    id: `daily-${date}`,
-    createdTime: "2026-01-01T00:00:00.000Z",
-    title: props.title ?? formatDailyTitle(Temporal.PlainDate.from(date)),
-    isLocked: props.isLocked ?? false,
-    date: Temporal.PlainDate.from(date),
-  });
-}
 
 describe("Daily のアクション決定", () => {
   it("今日の Daily 候補（空タイトル）に今日の日次タイトルを付ける", () => {
     // テンプレート適用前の空ページへ今日の日次タイトルを付けることを保証する。
     expect(
-      daily("2026-07-22", { title: "", isLocked: false }).decideActions(today),
+      daily("2026-07-22", { title: "", createdTime: "2026-07-21T15:00:00.000Z" }).decideActions(today),
     ).toEqual([{ type: "rename", title: "26.07.22（水）" }]);
   });
 
@@ -61,6 +47,41 @@ describe("Daily のアクション決定", () => {
     expect(
       daily("2026-07-23", { title: "26.07.23（木）", isLocked: false }).decideActions(today),
     ).toEqual([]);
+  });
+});
+
+describe("DailyPage.fromRecord", () => {
+  it("タイトルの日付を採用し、作成日は使わない", () => {
+    // インポートで作成日が偏っていてもタイトルが示す日を業務日とすることを保証する。
+    const page = DailyPage.fromRecord({
+      id: "daily",
+      createdTime: "2026-07-20T03:00:00.000Z",
+      title: "24.12.30（月）",
+      isLocked: true,
+    });
+
+    expect(page.date).toEqual(Temporal.PlainDate.from("2024-12-30"));
+    expect(page.createdAt).toEqual(Temporal.Instant.from("2026-07-20T03:00:00.000Z"));
+    expect(page.isLocked).toBe(true);
+  });
+
+  it("空タイトルなら作成日（JST）を日付にする", () => {
+    // テンプレート適用前の空タイトルでも今日の Daily として扱えることを保証する。
+    expect(
+      DailyPage.fromRecord({
+        id: "daily",
+        createdTime: "2026-07-21T15:00:00.000Z",
+        title: "",
+        isLocked: false,
+      }).date,
+    ).toEqual(Temporal.PlainDate.from("2026-07-22"));
+  });
+
+  it("日付でも空でもないタイトルは生成できない", () => {
+    // Daily 種別のページにメモのタイトルが付いた不整合を黙って処理しないことを保証する。
+    expect(function () {
+      DailyPage.fromRecord({ id: "daily", createdTime: "2026-07-20T03:00:00.000Z", title: "メモ", isLocked: false });
+    }).toThrow("Daily のタイトルが日付形式ではありません: メモ");
   });
 });
 

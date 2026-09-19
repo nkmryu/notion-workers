@@ -41,47 +41,48 @@ export function parseDailyTitle(title: string): Temporal.PlainDate | null {
   }
 }
 
-// Daily の日付は、タイトルが読めればタイトルから、空タイトル（テンプレート適用中）なら作成日から決める。
-// 日付でも空でもないタイトルの Daily はデータ不整合なので失敗させる。
-export function resolveDailyDate(page: {
-  readonly title: string;
+// 永続化されている Daily の姿。エンティティはここから生成し、日付はタイトルから導出する。
+export interface DailyRecord {
+  readonly id: string;
   readonly createdTime: string;
-}): Temporal.PlainDate {
-  const titleDate = parseDailyTitle(page.title);
+  readonly title: string;
+  readonly isLocked: boolean;
+}
+
+// 日付は、タイトルが読めればタイトルから、空タイトル（テンプレート適用中）なら作成日から決める。
+// 日付でも空でもないタイトルの Daily はデータ不整合なので失敗させる。
+function resolveDailyDate(record: DailyRecord): Temporal.PlainDate {
+  const titleDate = parseDailyTitle(record.title);
 
   if (titleDate !== null) {
     return titleDate;
   }
 
-  if (page.title === "") {
-    return parseCreatedTime(page.createdTime);
+  if (record.title === "") {
+    return parseCreatedTime(record.createdTime);
   }
 
-  throw new Error(`Daily のタイトルが日付形式ではありません: ${page.title}`);
+  throw new Error(`Daily のタイトルが日付形式ではありません: ${record.title}`);
 }
 
-export interface DailyPageProps {
-  readonly id: string;
-  readonly createdTime: string;
-  readonly title: string;
-  readonly isLocked: boolean;
-  readonly date: Temporal.PlainDate;
-}
-
-// 日誌の 1 日分。日付（JST の暦日）はタイトルから一度だけ確定し、以降の判断はこの値だけを使う。
+// 日誌の 1 日分。日付（JST の暦日）は生成時にタイトルから一度だけ確定し、以降の判断はこの値だけを使う。
 export class DailyPage {
-  readonly id: string;
-  readonly createdTime: string;
-  readonly title: string;
-  readonly isLocked: boolean;
-  readonly date: Temporal.PlainDate;
+  private constructor(
+    readonly id: string,
+    readonly createdAt: Temporal.Instant,
+    readonly title: string,
+    readonly isLocked: boolean,
+    readonly date: Temporal.PlainDate,
+  ) {}
 
-  constructor(props: DailyPageProps) {
-    this.id = props.id;
-    this.createdTime = props.createdTime;
-    this.title = props.title;
-    this.isLocked = props.isLocked;
-    this.date = props.date;
+  static fromRecord(record: DailyRecord): DailyPage {
+    return new DailyPage(
+      record.id,
+      Temporal.Instant.from(record.createdTime),
+      record.title,
+      record.isLocked,
+      resolveDailyDate(record),
+    );
   }
 
   get expectedTitle(): string {

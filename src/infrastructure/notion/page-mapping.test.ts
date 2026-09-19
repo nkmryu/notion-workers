@@ -64,9 +64,9 @@ describe("toDailyPage", () => {
       toDailyPage(
         createRow("24.12.30（月）", { id: "daily", is_locked: true }),
       ),
-    ).toEqual({
+    ).toMatchObject({
       id: "daily",
-      createdTime: "2026-07-20T03:00:00.000Z",
+      createdAt: Temporal.Instant.from("2026-07-20T03:00:00.000Z"),
       title: "24.12.30（月）",
       isLocked: true,
       date: Temporal.PlainDate.from("2024-12-30"),

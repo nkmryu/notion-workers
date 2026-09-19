@@ -1,17 +1,14 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import { DailyPage, formatDailyTitle } from "./daily";
 import { monthly } from "./monthly";
-import type { PeriodArchiveProps } from "./period";
-
-import { PeriodArchive } from "./period";
 import {
   buildRefsSection,
   collectRefs,
   selectRefTitle,
   shouldGenerateRefs,
 } from "./refs";
+import { archiveOf, dailyOn as daily } from "./testing";
 
 describe("collectRefs", () => {
   it("本文リンク・bookmark・embedのURLを初出順で重複なく集める", () => {
@@ -142,36 +139,19 @@ describe("buildRefsSection", () => {
   });
 });
 
-function daily(text: string): DailyPage {
-  const date = Temporal.PlainDate.from(text);
-  return new DailyPage({
-    id: `daily-${text}`,
-    createdTime: "2026-01-01T00:00:00.000Z",
-    title: formatDailyTitle(date),
-    isLocked: false,
-    date,
-  });
-}
-
-function archive(
-  props: Partial<PeriodArchiveProps<Temporal.PlainYearMonth>> & { readonly key: Temporal.PlainYearMonth },
-): PeriodArchive<Temporal.PlainYearMonth> {
-  return new PeriodArchive(monthly, {
-    id: `monthly-${props.key.toString()}`,
-    title: monthly.formatTitle(props.key),
-    isLocked: false,
-    transferredDates: [],
-    hasRefs: false,
-    ...props,
-  });
+function archive(props: {
+  readonly key: Temporal.PlainYearMonth;
+  readonly isLocked?: boolean;
+  readonly transferredDates?: readonly Temporal.PlainDate[];
+  readonly hasRefs?: boolean;
+}) {
+  return archiveOf(monthly, props.key, props);
 }
 
 describe("shouldGenerateRefs", () => {
   const today = Temporal.PlainDate.from("2026-07-22");
   const dailies = [daily("2026-06-01"), daily("2026-06-02")];
   const pastMonthly = {
-    id: "monthly-06",
-    title: "26.M06",
     key: Temporal.PlainYearMonth.from({ year: 2026, month: 6 }),
     isLocked: false,
     transferredDates: [Temporal.PlainDate.from("2026-06-01"), Temporal.PlainDate.from("2026-06-02")],
@@ -220,10 +200,10 @@ describe("selectRefTitle", () => {
     ).toEqual({ url, title: "本文の記事名", source: "anchor" });
   });
 
-  it("アンカーが無ければHTTP取得タイトルを使う", () => {
+  it("アンカーが無ければリンク先ページのタイトルを使う", () => {
     // HTTPから抽出できた記事名をリンクテキストにすることを保証する。
     expect(selectRefTitle({ url, anchorTitle: null }, "HTTPの記事名"))
-      .toEqual({ url, title: "HTTPの記事名", source: "http" });
+      .toEqual({ url, title: "HTTPの記事名", source: "linked_page" });
   });
 
   it("タイトル解決に失敗した場合はURL文字列へフォールバックする", () => {
@@ -231,7 +211,7 @@ describe("selectRefTitle", () => {
     expect(selectRefTitle({ url, anchorTitle: null }, null)).toEqual({
       url,
       title: url,
-      source: "fallback",
+      source: "url",
     });
   });
 });

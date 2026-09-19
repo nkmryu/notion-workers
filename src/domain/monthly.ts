@@ -39,8 +39,8 @@ export type MonthlyPage = PeriodPage<Temporal.PlainYearMonth>;
 
 export const monthly: PeriodDefinition<Temporal.PlainYearMonth> = {
   type: PERIOD_TYPE.monthly,
-  hasBeforeLockStep: true,
-  keyOf(date) {
+  requiresRefs: true,
+  periodOf(date) {
     return date.toPlainYearMonth();
   },
   compare: Temporal.PlainYearMonth.compare,

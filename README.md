@@ -40,36 +40,36 @@ DDD の層で分けています。依存は `application → domain`、`infrastr
 ```
 src/
   main.ts            エントリポイント（npm run maintain）。「今日」を JST で 1 回だけ決める
-  config.ts          合成ルート。環境変数を読み、infrastructure の実装をリポジトリ / ポートへ注入する
+  config.ts          合成ルート。環境変数を読み、infrastructure の実装を Dependencies（リポジトリ / ポート）へ組み立てる
   domain/            ドメイン層。純粋関数とエンティティだけを置く
     page.ts          種別・アクションの定数
-    daily.ts         DailyPage エンティティ（期待タイトル・終了判定・アクション決定）とタイトル規則
-    period.ts        PeriodPage / PeriodArchive エンティティ（自分の期間規則を持ち、転記完了とロックの不変条件を守る）と作成計画
+    daily.ts         DailyPage エンティティ（fromRecord で生成。期待タイトル・終了判定・操作の決定）とタイトル規則
+    period.ts        PeriodPage（自分の期間規則を持つ）と、転記状態を知った PeriodArchive（転記完了とロックの不変条件を守る）、作成計画
     weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
     jst.ts           JST の暦日（Temporal.PlainDate）への変換
-    transfer.ts      転記計画（どの Daily をどの期間ページへ）
+    transfer.ts      転記計画（どの Daily をどの期間ページへ）と、見出しからの転記状態の導出
     transfer-markdown.ts    転記セクションの Markdown 組み立て
     refs.ts          Refs の収集・タイトルの優先順位・セクション組み立て・生成判定
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
-    diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧と 6 操作）と ContentRejectedError
+    diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧、作成、リネーム、ロック、本文の読み書き）と ContentRejectedError
   application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
     run-maintenance.ts      1 実行の流れ（Daily → Weekly → Monthly）
     maintain-dailies.ts     Daily を最新状態にする（今日を作成 → 過去日をロック）
-    maintain-period.ts      期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
+    maintain-period.ts      期間ページの準備（作成 → 転記状態の読み取り → 転記）と確定（リネーム・ロック）
     transfer-dailies.ts     終了した Daily の転記
-    generate-refs.ts        Monthly の Refs 生成（ロック前の工程）
+    generate-refs.ts        Monthly の Refs 生成。run-maintenance が準備と確定の間に挟む
     page-actions.ts         リネーム / ロックの計画（データ）と適用、件数の導出
-    page-title-source.ts    PageTitleSource ポート（URL → タイトル | null）
+    web-page-title-lookup.ts   WebPageTitleLookup ポート（URL → リンク先ページのタイトル | null）
   infrastructure/    外部システムの実装
     notion/
-      diary-repository.ts   DiaryRepository の Notion SDK 実装。種別ごとの取得、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
+      diary-repository.ts   DiaryRepository の Notion SDK 実装。種別ごとの取得、テンプレートからの作成、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
       page-mapping.ts       行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
       markdown-links.ts     Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
       pacing.ts, error.ts
     web/
       page-title.ts         HTML からのタイトル抽出（og:title → <title>）
-      page-title-lookup.ts  PageTitleSource の fetch 実装。タイムアウト・64KB 制限・失敗は null
+      page-title-lookup.ts  WebPageTitleLookup の fetch 実装。タイムアウト・64KB 制限・失敗は null
   shared/            層に属さない小さな部品
     sequence.ts      mapSequentially（順序依存の IO を可変変数なしに直列適用）と countBy
     lazy.ts          初回だけ計算するメモ化。本番コードで唯一の可変変数をここに閉じる

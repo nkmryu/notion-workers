@@ -17,11 +17,11 @@ export interface ResolvedRef {
   readonly title: string;
 }
 
-// タイトルの出どころ。本文のアンカーテキストを最優先し、無ければ取得したページタイトル、それも無ければ URL 表示。
+// タイトルの出どころ。本文のアンカーテキストを最優先し、無ければリンク先ページのタイトル、それも無ければ URL 表示。
 export const REF_TITLE_SOURCE = {
   anchor: "anchor",
-  http: "http",
-  fallback: "fallback",
+  linked_page: "linked_page",
+  url: "url",
 } as const;
 export type RefTitleSource = (typeof REF_TITLE_SOURCE)[keyof typeof REF_TITLE_SOURCE];
 
@@ -148,15 +148,15 @@ export function shouldGenerateRefs(
 
 export function selectRefTitle(
   ref: CollectedRef,
-  httpTitle: string | null,
+  linkedPageTitle: string | null,
 ): SelectedRefTitle {
   if (ref.anchorTitle !== null) {
     return { url: ref.url, title: ref.anchorTitle, source: REF_TITLE_SOURCE.anchor };
   }
 
-  if (httpTitle !== null) {
-    return { url: ref.url, title: httpTitle, source: REF_TITLE_SOURCE.http };
+  if (linkedPageTitle !== null) {
+    return { url: ref.url, title: linkedPageTitle, source: REF_TITLE_SOURCE.linked_page };
   }
 
-  return { url: ref.url, title: ref.url, source: REF_TITLE_SOURCE.fallback };
+  return { url: ref.url, title: ref.url, source: REF_TITLE_SOURCE.url };
 }

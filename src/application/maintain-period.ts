@@ -1,71 +1,99 @@
 import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "../domain/daily";
-import type { PeriodArchive, PeriodDefinition } from "../domain/period";
 import type { DiaryRepository } from "../domain/diary-repository";
+import type { PeriodArchive, PeriodDefinition, PeriodPage } from "../domain/period";
 import type { PageActionCounts } from "./page-actions";
 
-import { PeriodPage, planMissingPeriodPages } from "../domain/period";
-import { applyPageActions, planPageActions } from "./page-actions";
+import { EMPTY_TRANSFER_STATE, PeriodPage as PeriodPageEntity, planMissingPeriodPages } from "../domain/period";
+import { deriveTransferState } from "../domain/transfer";
 import { mapSequentially } from "../shared/sequence";
+import { applyPageActions, planPageActions } from "./page-actions";
 import { transferEndedDailies } from "./transfer-dailies";
 
-// ロック前に行う工程（Monthly の Refs）への入力。工程を飛ばしてロックされたページの補完も担う。
-export interface BeforeLockInput<K> {
+export interface PreparedPeriod<K> {
   readonly archives: readonly PeriodArchive<K>[];
-  readonly dailies: readonly DailyPage[];
-  readonly today: Temporal.PlainDate;
-}
-
-export interface PeriodMaintenance<K, F> {
-  readonly period: PeriodDefinition<K>;
-  readonly templateId: string;
-  readonly beforeLock: (input: BeforeLockInput<K>) => Promise<F>;
-}
-
-export interface PeriodMaintenanceResult<F> extends PageActionCounts {
   readonly created: number;
   readonly daysTransferred: number;
-  readonly fallbackDates: readonly string[];
-  readonly beforeLockResult: F;
+  readonly fallbackDates: readonly Temporal.PlainDate[];
 }
 
-// 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、ロック前の工程を済ませてからリネーム・ロックする。
-export async function maintainPeriod<K, F>(
+export interface PeriodMaintenanceResult extends PageActionCounts {
+  readonly created: number;
+  readonly daysTransferred: number;
+  readonly fallbackDates: readonly Temporal.PlainDate[];
+}
+
+async function createMissingPages<K>(
   diary: DiaryRepository,
-  { period, templateId, beforeLock }: PeriodMaintenance<K, F>,
+  period: PeriodDefinition<K>,
   dailies: readonly DailyPage[],
   existingPages: readonly PeriodPage<K>[],
   today: Temporal.PlainDate,
-): Promise<PeriodMaintenanceResult<F>> {
-  const createdPages = await mapSequentially(
+): Promise<readonly PeriodPage<K>[]> {
+  return mapSequentially(
     planMissingPeriodPages(period, dailies, existingPages, today),
     async function (plan) {
-      const id = await diary.createPageFromTemplate({ templateId, title: plan.title });
-      // テンプレートの非同期適用後にも期間タイトルを確定させるため、同一実行でリネーム対象にする。
-      return new PeriodPage(period, { id, title: "", isLocked: false, key: plan.key });
+      const id = await diary.createPeriodPage(period.type, plan.title);
+      return PeriodPageEntity.created(period, id, plan.key);
     },
   );
-  const transfer = await transferEndedDailies(
-    diary,
-    dailies,
-    [...existingPages, ...createdPages],
-    today,
-    createdPages.map(function (page) {
-      return page.id;
-    }),
-  );
-  const actions = transfer.archives.flatMap(function (archive) {
-    return planPageActions(archive.id, archive.decideActions(dailies, today));
+}
+
+// 既存ページは本文から転記状態を読む。もう手を入れないページは読まなくても状態が決まる。
+function readArchives<K>(
+  diary: DiaryRepository,
+  pages: readonly PeriodPage<K>[],
+): Promise<readonly PeriodArchive<K>[]> {
+  return mapSequentially(pages, async function (page) {
+    return page.withTransferState(
+      page.isSettled() ? EMPTY_TRANSFER_STATE : deriveTransferState(await diary.getSectionTitles(page.id)),
+    );
   });
-  const beforeLockResult = await beforeLock({ archives: transfer.archives, dailies, today });
-  const counts = await applyPageActions(diary, actions);
+}
+
+// 期間ページを閉じる前の段階: 終了した期間のページを作り、Daily を転記して、転記状態の揃った期間ページを返す。
+export async function preparePeriodPages<K>(
+  diary: DiaryRepository,
+  period: PeriodDefinition<K>,
+  dailies: readonly DailyPage[],
+  existingPages: readonly PeriodPage<K>[],
+  today: Temporal.PlainDate,
+): Promise<PreparedPeriod<K>> {
+  const createdPages = await createMissingPages(diary, period, dailies, existingPages, today);
+  const archives = [
+    ...(await readArchives(diary, existingPages)),
+    // 作成直後のページが空であることは、作成した側だけが知っている。
+    ...createdPages.map(function (page) {
+      return page.withTransferState(EMPTY_TRANSFER_STATE);
+    }),
+  ];
+  const transfer = await transferEndedDailies(diary, dailies, archives, today);
 
   return {
+    archives: transfer.archives,
     created: createdPages.length,
     daysTransferred: transfer.daysTransferred,
     fallbackDates: transfer.fallbackDates,
-    beforeLockResult,
+  };
+}
+
+// 期間ページを閉じる段階: タイトルを整え、転記の揃った過去の期間をロックする。
+export async function settlePeriodPages<K>(
+  diary: DiaryRepository,
+  prepared: PreparedPeriod<K>,
+  dailies: readonly DailyPage[],
+  today: Temporal.PlainDate,
+): Promise<PeriodMaintenanceResult> {
+  const actions = prepared.archives.flatMap(function (archive) {
+    return planPageActions(archive.id, archive.decideActions(dailies, today));
+  });
+  const counts = await applyPageActions(diary, actions);
+
+  return {
+    created: prepared.created,
+    daysTransferred: prepared.daysTransferred,
+    fallbackDates: prepared.fallbackDates,
     ...counts,
   };
 }

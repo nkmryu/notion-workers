@@ -15,7 +15,6 @@ export interface DailyMaintenanceResult extends PageActionCounts {
 // Daily を最新状態にする: 今日の分が無ければ作り、今日の分のタイトルを整え、過去日をロックする。
 export async function maintainDailies(
   diary: DiaryRepository,
-  templateId: string,
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): Promise<DailyMaintenanceResult> {
@@ -25,7 +24,7 @@ export async function maintainDailies(
   });
 
   await mapSequentially(creations, function (title) {
-    return diary.createPageFromTemplate({ templateId, title });
+    return diary.createDaily(title);
   });
   const counts = await applyPageActions(diary, actions);
 

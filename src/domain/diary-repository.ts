@@ -1,5 +1,6 @@
 import type { DailyPage } from "./daily";
 import type { MonthlyPage } from "./monthly";
+import type { PeriodType } from "./page";
 import type { WeeklyPage } from "./weekly";
 
 // 日誌データベースのリポジトリ。アプリケーション層はこのインターフェースだけに依存し、infrastructure/notion が実装する。
@@ -10,10 +11,9 @@ export interface DiaryRepository {
   readonly listDailies: () => Promise<readonly DailyPage[]>;
   readonly listWeeklies: () => Promise<readonly WeeklyPage[]>;
   readonly listMonthlies: () => Promise<readonly MonthlyPage[]>;
-  readonly createPageFromTemplate: (input: {
-    readonly templateId: string;
-    readonly title: string;
-  }) => Promise<string>;
+  // ページはそれぞれのテンプレートから作る。テンプレートの指定は Notion の事情なので実装側が持つ。
+  readonly createDaily: (title: string) => Promise<string>;
+  readonly createPeriodPage: (type: PeriodType, title: string) => Promise<string>;
   readonly renamePage: (pageId: string, title: string) => Promise<void>;
   readonly lockPage: (pageId: string) => Promise<void>;
   readonly getSectionTitles: (pageId: string) => Promise<readonly string[]>;
