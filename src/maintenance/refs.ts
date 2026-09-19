@@ -1,4 +1,5 @@
-import type { CalendarMonth } from "../diary/calendar-month";
+import type { Temporal } from "temporal-polyfill";
+
 import type { DailyPage, PeriodArchive } from "../diary/page";
 import type { DiaryStore } from "./diary-store";
 import type { RefTitleResolutionCounts } from "./ref-title-lookup";
@@ -30,13 +31,13 @@ function addCounts(
 }
 
 function listCandidates(
-  archives: readonly PeriodArchive<CalendarMonth>[],
+  archives: readonly PeriodArchive<Temporal.PlainYearMonth>[],
   dailies: readonly DailyPage[],
-  now: Date,
-): readonly PeriodArchive<CalendarMonth>[] {
+  today: Temporal.PlainDate,
+): readonly PeriodArchive<Temporal.PlainYearMonth>[] {
   return archives
     .filter(function (archive) {
-      return shouldGenerateRefs(archive, dailies, now);
+      return shouldGenerateRefs(archive, dailies, today);
     })
     .toSorted(function (left, right) {
       const comparison = monthly.compare(left.key, right.key);
@@ -47,11 +48,11 @@ function listCandidates(
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
   diary: DiaryStore,
-  archives: readonly PeriodArchive<CalendarMonth>[],
+  archives: readonly PeriodArchive<Temporal.PlainYearMonth>[],
   dailies: readonly DailyPage[],
-  now: Date,
+  today: Temporal.PlainDate,
 ): Promise<RefsResult> {
-  const candidates = listCandidates(archives, dailies, now);
+  const candidates = listCandidates(archives, dailies, today);
   let generated = 0;
   let titleResolution: RefTitleResolutionCounts = { http: 0, anchor: 0, fallback: 0 };
 

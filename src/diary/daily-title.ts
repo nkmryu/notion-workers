@@ -1,73 +1,57 @@
-import type { DateKey } from "./jst-date";
+import { Temporal } from "temporal-polyfill";
 
-import {
-  calendarDateToUtcDate,
-  dateKeyToDate,
-  formatDateKey,
-  getJstCalendarDate,
-  getJstDateKey,
-  parseCreatedTime,
-} from "./jst-date";
+import { parseCreatedTime } from "./jst";
 
-const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
-const DAILY_TITLE_PATTERN =
-  /^(\d{2})\.(\d{2})\.(\d{2})（[日月火水木金土]）$/;
+// Temporal の dayOfWeek は月曜 = 1 … 日曜 = 7。
+const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"] as const;
+const DAILY_TITLE_PATTERN = /^(\d{2})\.(\d{2})\.(\d{2})（[日月火水木金土]）$/;
 
-export function formatDailyTitle(date: Date): string {
-  const { year, month, day } = getJstCalendarDate(date);
-  const weekdayIndex = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  const weekday = WEEKDAYS[weekdayIndex];
+export function formatDailyTitle(date: Temporal.PlainDate): string {
+  const weekday = WEEKDAYS[date.dayOfWeek - 1];
 
   if (weekday === undefined) {
-    throw new Error(`曜日の変換に失敗しました: ${date.toISOString()}`);
+    throw new Error(`曜日の変換に失敗しました: ${date.toString()}`);
   }
 
-  const shortYear = (year % 100).toString().padStart(2, "0");
-  const paddedMonth = month.toString().padStart(2, "0");
-  const paddedDay = day.toString().padStart(2, "0");
+  const shortYear = (date.year % 100).toString().padStart(2, "0");
+  const month = date.month.toString().padStart(2, "0");
+  const day = date.day.toString().padStart(2, "0");
 
-  return `${shortYear}.${paddedMonth}.${paddedDay}（${weekday}）`;
+  return `${shortYear}.${month}.${day}（${weekday}）`;
 }
 
-export function formatDailyTitleFromDateKey(dateKey: DateKey): string {
-  return formatDailyTitle(dateKeyToDate(dateKey));
-}
+// 曜日文字は日付の同定に使わない。年・月・日だけで日付を決め、存在しない日付は失敗させる。
+export function parseDailyTitle(title: string): Temporal.PlainDate | null {
+  const [, yearText, monthText, dayText] = DAILY_TITLE_PATTERN.exec(title) ?? [];
 
-// 曜日文字は日付の同定に使わない。年・月・日だけで日付キーを決める。
-export function parseDailyTitleDateKey(title: string): DateKey | null {
-  const match = DAILY_TITLE_PATTERN.exec(title);
-  const [, yearText, monthText, dayText] = match ?? [];
-
-  if (
-    yearText === undefined ||
-    monthText === undefined ||
-    dayText === undefined
-  ) {
+  if (yearText === undefined || monthText === undefined || dayText === undefined) {
     return null;
   }
 
-  const year = 2000 + Number(yearText);
-  const month = Number(monthText);
-  const day = Number(dayText);
-  calendarDateToUtcDate(year, month, day, title);
-
-  return formatDateKey({ year, month, day });
+  try {
+    return Temporal.PlainDate.from(
+      { year: 2000 + Number(yearText), month: Number(monthText), day: Number(dayText) },
+      { overflow: "reject" },
+    );
+  } catch {
+    throw new Error(`日付が不正です: ${title}`);
+  }
 }
 
 // Daily の日付は、タイトルが読めればタイトルから、空タイトル（テンプレート適用中）なら作成日から決める。
 // 日付でも空でもないタイトルの Daily はデータ不整合なので失敗させる。
-export function resolveDailyDateKey(page: {
+export function resolveDailyDate(page: {
   readonly title: string;
   readonly createdTime: string;
-}): DateKey {
-  const titleDateKey = parseDailyTitleDateKey(page.title);
+}): Temporal.PlainDate {
+  const titleDate = parseDailyTitle(page.title);
 
-  if (titleDateKey !== null) {
-    return titleDateKey;
+  if (titleDate !== null) {
+    return titleDate;
   }
 
   if (page.title === "") {
-    return getJstDateKey(parseCreatedTime(page.createdTime));
+    return parseCreatedTime(page.createdTime);
   }
 
   throw new Error(`Daily のタイトルが日付形式ではありません: ${page.title}`);

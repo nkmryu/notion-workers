@@ -1,8 +1,8 @@
-import type { DateKey } from "./jst-date";
+import { Temporal } from "temporal-polyfill";
+
 import type { DailyPage } from "./page";
 
-import { formatDailyTitleFromDateKey } from "./daily-title";
-import { getJstDateKey } from "./jst-date";
+import { formatDailyTitle } from "./daily-title";
 
 export const PAGE_ACTION_TYPE = {
   rename: "rename",
@@ -16,30 +16,27 @@ export type PageAction =
   | { readonly type: typeof PAGE_ACTION_TYPE.none };
 
 export function shouldCreateTodayPage(
-  dailies: readonly Pick<DailyPage, "dateKey">[],
-  now: Date,
+  dailies: readonly Pick<DailyPage, "date">[],
+  today: Temporal.PlainDate,
 ): boolean {
-  const todayKey = getJstDateKey(now);
-
   return !dailies.some(function (daily) {
-    return daily.dateKey === todayKey;
+    return daily.date.equals(today);
   });
 }
 
 export function decideDailyPageAction(
-  page: Pick<DailyPage, "dateKey" | "title" | "isLocked">,
-  now: Date,
+  page: Pick<DailyPage, "date" | "title" | "isLocked">,
+  today: Temporal.PlainDate,
 ): PageAction {
-  const todayKey = getJstDateKey(now);
-  const expectedTitle = formatDailyTitleFromDateKey(page.dateKey);
+  const expectedTitle = formatDailyTitle(page.date);
 
-  if (page.dateKey === todayKey) {
+  if (page.date.equals(today)) {
     return page.title === expectedTitle
       ? { type: PAGE_ACTION_TYPE.none }
       : { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
   }
 
-  if (page.dateKey < todayKey && !page.isLocked) {
+  if (Temporal.PlainDate.compare(page.date, today) < 0 && !page.isLocked) {
     return { type: PAGE_ACTION_TYPE.lock };
   }
 

@@ -1,6 +1,6 @@
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import { parseDateKey } from "./jst-date";
 import {
   buildRefsSection,
   collectRefs,
@@ -137,40 +137,40 @@ describe("buildRefsSection", () => {
 });
 
 describe("shouldGenerateRefs", () => {
-  const now = new Date("2026-07-22T03:00:00.000Z");
-  const dailies = [{ dateKey: parseDateKey("2026-06-01") }, { dateKey: parseDateKey("2026-06-02") }];
+  const today = Temporal.PlainDate.from("2026-07-22");
+  const dailies = [{ date: Temporal.PlainDate.from("2026-06-01") }, { date: Temporal.PlainDate.from("2026-06-02") }];
   const pastMonthly = {
-    key: { year: 2026, month: 6 },
+    key: Temporal.PlainYearMonth.from({ year: 2026, month: 6 }),
     isLocked: false,
-    transferredDateKeys: ["2026-06-01", "2026-06-02"].map(parseDateKey),
+    transferredDates: [Temporal.PlainDate.from("2026-06-01"), Temporal.PlainDate.from("2026-06-02")],
     hasRefs: false,
   };
 
   it("Refs があれば生成しない", () => {
     // Refs の有無を冪等キーとして重複生成を防ぐことを保証する。
-    expect(shouldGenerateRefs({ ...pastMonthly, hasRefs: true }, dailies, now)).toBe(false);
+    expect(shouldGenerateRefs({ ...pastMonthly, hasRefs: true }, dailies, today)).toBe(false);
   });
 
   it("未ロックの過去月は全日の転記が揃った場合だけ生成する", () => {
     // 日次転記が完了する前には Refs を確定せず、ロック直前だけ生成することを保証する。
     expect(
-      shouldGenerateRefs({ ...pastMonthly, transferredDateKeys: ["2026-06-01"].map(parseDateKey) }, dailies, now),
+      shouldGenerateRefs({ ...pastMonthly, transferredDates: [Temporal.PlainDate.from("2026-06-01")] }, dailies, today),
     ).toBe(false);
-    expect(shouldGenerateRefs(pastMonthly, dailies, now)).toBe(true);
+    expect(shouldGenerateRefs(pastMonthly, dailies, today)).toBe(true);
   });
 
   it("今月の Monthly は生成対象にしない", () => {
     // 進行中の月へ Refs を生成しないことを保証する。
     expect(
-      shouldGenerateRefs({ ...pastMonthly, key: { year: 2026, month: 7 } }, dailies, now),
+      shouldGenerateRefs({ ...pastMonthly, key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }) }, dailies, today),
     ).toBe(false);
   });
 
   it("Refs の無いロック済み過去月は転記状態と無関係に生成対象にする", () => {
     // 外部要因で Refs より先にロックされた月も定期実行だけで補完できることを保証する。
-    const locked = { ...pastMonthly, isLocked: true, transferredDateKeys: [] };
+    const locked = { ...pastMonthly, isLocked: true, transferredDates: [] };
 
-    expect(shouldGenerateRefs(locked, dailies, now)).toBe(true);
-    expect(shouldGenerateRefs({ ...locked, hasRefs: true }, dailies, now)).toBe(false);
+    expect(shouldGenerateRefs(locked, dailies, today)).toBe(true);
+    expect(shouldGenerateRefs({ ...locked, hasRefs: true }, dailies, today)).toBe(false);
   });
 });

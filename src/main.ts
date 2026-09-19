@@ -1,6 +1,9 @@
 import type { MaintenanceSummary } from "./maintenance/run";
 
+import { Temporal } from "temporal-polyfill";
+
 import { loadConfig } from "./config";
+import { toJstDate } from "./diary/jst";
 import { runMaintenance } from "./maintenance/run";
 
 function formatSummary({ daily, weekly, monthly }: MaintenanceSummary): string {
@@ -12,7 +15,8 @@ function formatSummary({ daily, weekly, monthly }: MaintenanceSummary): string {
 }
 
 async function main(): Promise<void> {
-  const summary = await runMaintenance(loadConfig(), new Date());
+  // 「今日」は JST の暦日として実行開始時に 1 回だけ決め、以降の判断はすべてこの日付を基準にする。
+  const summary = await runMaintenance(loadConfig(), toJstDate(Temporal.Now.instant()));
   console.log(formatSummary(summary));
 
   const fallbackDates = new Set([

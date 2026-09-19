@@ -54,7 +54,7 @@ src/
     refs.ts          Refs の収集とセクション組み立て
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
-    jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
+    jst.ts, daily-title.ts, iso-week.ts, calendar-month.ts   JST の暦日（Temporal.PlainDate）・ISO 週・タイトルの規則
   maintenance/       手続き。diary の判断に従って DiaryStore を呼ぶ。notion/ には依存しない
     diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）

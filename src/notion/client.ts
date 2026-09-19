@@ -9,7 +9,7 @@ import {
   isFullDataSource,
 } from "@notionhq/client";
 
-import { JST_TIME_ZONE } from "../diary/jst-date";
+import { JST_TIME_ZONE } from "../diary/jst";
 import { extractSectionTitles } from "../diary/markdown-section";
 import { isNotionValidationError } from "./error";
 import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";

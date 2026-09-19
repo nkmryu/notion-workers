@@ -1,27 +1,17 @@
-import { getJstCalendarDate, resolveShortYear } from "./jst-date";
+import { Temporal } from "temporal-polyfill";
 
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+import { resolveShortYear } from "./jst";
+
 const WEEKLY_TITLE_PATTERN = /^(\d{2})\.W(\d{2})$/;
 
+// ISO 週。年跨ぎの週は木曜が属する年（yearOfWeek）で数える。
 export interface IsoWeek {
   readonly year: number;
   readonly week: number;
 }
 
-export function getJstIsoWeek(date: Date): IsoWeek {
-  const { year, month, day } = getJstCalendarDate(date);
-  const calendarDate = new Date(Date.UTC(year, month - 1, day));
-  const isoWeekday = calendarDate.getUTCDay() || 7;
-  const thursday = new Date(calendarDate);
-  thursday.setUTCDate(calendarDate.getUTCDate() + 4 - isoWeekday);
-
-  const weekYear = thursday.getUTCFullYear();
-  const firstDayOfWeekYear = Date.UTC(weekYear, 0, 1);
-  const daysFromYearStart =
-    (thursday.getTime() - firstDayOfWeekYear) / MILLISECONDS_PER_DAY;
-  const week = Math.ceil((daysFromYearStart + 1) / 7);
-
-  return { year: weekYear, week };
+export function isoWeekOf(date: Temporal.PlainDate): IsoWeek {
+  return { year: date.yearOfWeek ?? date.year, week: date.weekOfYear ?? 1 };
 }
 
 export function compareIsoWeeks(left: IsoWeek, right: IsoWeek): -1 | 0 | 1 {
@@ -37,22 +27,15 @@ export function compareIsoWeeks(left: IsoWeek, right: IsoWeek): -1 | 0 | 1 {
 }
 
 export function formatIsoWeekTitle({ year, week }: IsoWeek): string {
-  const shortYear = (year % 100).toString().padStart(2, "0");
-  const paddedWeek = week.toString().padStart(2, "0");
-
-  return `${shortYear}.W${paddedWeek}`;
+  return `${(year % 100).toString().padStart(2, "0")}.W${week.toString().padStart(2, "0")}`;
 }
 
-function getIsoWeeksInYear(year: number): number {
-  return getJstIsoWeek(new Date(Date.UTC(year, 11, 28, 3))).week;
+function isoWeeksInYear(year: number): number {
+  return isoWeekOf(Temporal.PlainDate.from({ year, month: 12, day: 28 })).week;
 }
 
-export function parseIsoWeekTitle(
-  title: string,
-  referenceYear: number,
-): IsoWeek | null {
-  const match = WEEKLY_TITLE_PATTERN.exec(title);
-  const [, shortYearText, weekText] = match ?? [];
+export function parseIsoWeekTitle(title: string, referenceYear: number): IsoWeek | null {
+  const [, shortYearText, weekText] = WEEKLY_TITLE_PATTERN.exec(title) ?? [];
 
   if (shortYearText === undefined || weekText === undefined) {
     return null;
@@ -61,9 +44,5 @@ export function parseIsoWeekTitle(
   const year = resolveShortYear(Number(shortYearText), referenceYear);
   const week = Number(weekText);
 
-  if (week < 1 || week > getIsoWeeksInYear(year)) {
-    return null;
-  }
-
-  return { year, week };
+  return week >= 1 && week <= isoWeeksInYear(year) ? { year, week } : null;
 }

@@ -1,3 +1,4 @@
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,7 +11,7 @@ import { resolvePeriodKey } from "./period";
 describe("月次タイトル", () => {
   it("暦年とゼロ埋めした月を整形する", () => {
     // 月次タイトルが26.M01形式になることを保証する。
-    expect(formatCalendarMonthTitle({ year: 2026, month: 1 })).toBe("26.M01");
+    expect(formatCalendarMonthTitle(Temporal.PlainYearMonth.from({ year: 2026, month: 1 }))).toBe("26.M01");
   });
 
   it("タイトルを作成月より優先して解析する", () => {
@@ -20,7 +21,7 @@ describe("月次タイトル", () => {
         createdTime: "2026-07-01T00:00:00.000Z",
         title: "25.M12",
       }),
-    ).toEqual({ year: 2025, month: 12 });
+    ).toEqual(Temporal.PlainYearMonth.from({ year: 2025, month: 12 }));
   });
 
   it("不正な月を解析しない", () => {

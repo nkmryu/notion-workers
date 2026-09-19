@@ -1,3 +1,5 @@
+import type { Temporal } from "temporal-polyfill";
+
 import type { Config } from "../config";
 import type { DailyMaintenanceResult } from "./daily";
 import type { PeriodMaintenanceResult } from "./period";
@@ -19,19 +21,19 @@ export interface MaintenanceSummary {
 // 各段階は冪等で、途中で失敗しても次回の実行が未完了分だけを処理する。
 export async function runMaintenance(
   config: Config,
-  now: Date,
+  today: Temporal.PlainDate,
 ): Promise<MaintenanceSummary> {
   const { diary } = config;
   const dailies = await diary.listDailies();
 
   return {
-    daily: await maintainDailies(diary, config.dailyTemplateId, dailies, now),
+    daily: await maintainDailies(diary, config.dailyTemplateId, dailies, today),
     weekly: await maintainPeriod(
       diary,
       { period: weekly, templateId: config.weeklyTemplateId, async beforeLock() {} },
       dailies,
       await diary.listWeeklies(),
-      now,
+      today,
     ),
     monthly: await maintainPeriod(
       diary,
@@ -40,12 +42,12 @@ export async function runMaintenance(
         templateId: config.monthlyTemplateId,
         // 閉じる前に、その月の外部 URL を Refs としてまとめる。
         beforeLock(input) {
-          return generateRefs(diary, input.archives, input.dailies, input.now);
+          return generateRefs(diary, input.archives, input.dailies, input.today);
         },
       },
       dailies,
       await diary.listMonthlies(),
-      now,
+      today,
     ),
   };
 }

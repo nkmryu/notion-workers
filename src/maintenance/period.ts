@@ -1,3 +1,5 @@
+import type { Temporal } from "temporal-polyfill";
+
 import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
 import type { PeriodCreationPlan, PeriodDefinition } from "../diary/period";
 import type { DiaryStore } from "./diary-store";
@@ -10,7 +12,7 @@ import { transferEndedDailies } from "./transfer";
 export interface BeforeLockInput<K> {
   readonly archives: readonly PeriodArchive<K>[];
   readonly dailies: readonly DailyPage[];
-  readonly now: Date;
+  readonly today: Temporal.PlainDate;
 }
 
 export interface PeriodMaintenance<K, F> {
@@ -50,29 +52,29 @@ export async function maintainPeriod<K, F>(
   maintenance: PeriodMaintenance<K, F>,
   dailies: readonly DailyPage[],
   existingPages: readonly PeriodPage<K>[],
-  now: Date,
+  today: Temporal.PlainDate,
 ): Promise<PeriodMaintenanceResult<F>> {
   const { period, templateId } = maintenance;
   const createdPages = await createPeriodPages(
     diary,
     templateId,
-    planMissingPeriodPages(period, dailies, existingPages, now),
+    planMissingPeriodPages(period, dailies, existingPages, today),
   );
   const transfer = await transferEndedDailies(
     diary,
     period,
     dailies,
     [...existingPages, ...createdPages],
-    now,
+    today,
     createdPages.map(function (page) {
       return page.id;
     }),
   );
   const actions = transfer.archives.flatMap(function (archive) {
-    const action = decidePeriodPageAction(period, archive, dailies, now);
+    const action = decidePeriodPageAction(period, archive, dailies, today);
     return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page: archive, action }];
   });
-  const beforeLockResult = await maintenance.beforeLock({ archives: transfer.archives, dailies, now });
+  const beforeLockResult = await maintenance.beforeLock({ archives: transfer.archives, dailies, today });
   let renames = 0;
   let locks = 0;
 

@@ -3,6 +3,7 @@ import type {
   PageObjectResponse,
 } from "@notionhq/client";
 
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 import { monthly } from "../diary/monthly";
@@ -68,7 +69,7 @@ describe("toDailyPage", () => {
       createdTime: "2026-07-20T03:00:00.000Z",
       title: "24.12.30（月）",
       isLocked: true,
-      dateKey: "2024-12-30",
+      date: Temporal.PlainDate.from("2024-12-30"),
     });
   });
 
@@ -80,13 +81,13 @@ describe("toDailyPage", () => {
       },
     });
 
-    expect(toDailyPage(row)).toMatchObject({ title: "26.07.20（月）", dateKey: "2026-07-20" });
+    expect(toDailyPage(row)).toMatchObject({ title: "26.07.20（月）", date: Temporal.PlainDate.from("2026-07-20") });
   });
 
   it("空タイトルなら作成日（JST）を日付キーにする", () => {
     // テンプレート適用前の空タイトルでも今日の Daily として扱えることを保証する。
     expect(toDailyPage(createRow("", { created_time: "2026-07-21T15:00:00.000Z" }))).toMatchObject(
-      { dateKey: "2026-07-22" },
+      { date: Temporal.PlainDate.from("2026-07-22") },
     );
   });
 
@@ -124,6 +125,6 @@ describe("toPeriodPage", () => {
     // テンプレート適用中の空タイトルでも期間を識別できることを保証する。
     expect(
       toPeriodPage(monthly, createRow("", { created_time: "2026-07-01T00:00:00.000Z" })).key,
-    ).toEqual({ year: 2026, month: 7 });
+    ).toEqual(Temporal.PlainYearMonth.from({ year: 2026, month: 7 }));
   });
 });

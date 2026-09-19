@@ -1,46 +1,45 @@
-import type { DateKey } from "./jst-date";
 import type { DailyPage, PeriodArchive, PeriodType } from "./page";
 import type { PeriodDefinition } from "./period";
 
-import { formatDailyTitleFromDateKey } from "./daily-title";
-import { getJstDateKey, parseCreatedTime } from "./jst-date";
-import { isTransferred, keyOfDateKey } from "./period";
+import { Temporal } from "temporal-polyfill";
+
+import { formatDailyTitle } from "./daily-title";
+import { isTransferred } from "./period";
 
 export interface TransferPlan {
   readonly periodType: PeriodType;
   readonly destinationPageId: string;
-  readonly dateKey: DateKey;
+  readonly date: Temporal.PlainDate;
   readonly title: string;
   readonly dailyPageIds: readonly string[];
 }
 
-type EndedDaily = Pick<DailyPage, "id" | "createdTime" | "dateKey">;
+type EndedDaily = Pick<DailyPage, "id" | "createdTime" | "date">;
 
 // 同じ日付の Daily が複数あるときは created_time 順に 1 つの見出しの下へ並べる。
 function compareDailies(left: EndedDaily, right: EndedDaily): number {
-  const dateComparison = left.dateKey.localeCompare(right.dateKey);
+  const dateComparison = Temporal.PlainDate.compare(left.date, right.date);
 
   if (dateComparison !== 0) {
     return dateComparison;
   }
 
-  const timeComparison =
-    parseCreatedTime(left.createdTime).getTime() -
-    parseCreatedTime(right.createdTime).getTime();
+  const timeComparison = Temporal.Instant.compare(
+    Temporal.Instant.from(left.createdTime),
+    Temporal.Instant.from(right.createdTime),
+  );
 
   return timeComparison !== 0 ? timeComparison : left.id.localeCompare(right.id);
 }
 
 function listEndedDailies(
   dailies: readonly EndedDaily[],
-  now: Date,
+  today: Temporal.PlainDate,
 ): readonly EndedDaily[] {
-  const todayKey = getJstDateKey(now);
-
   // 今日の Daily は書きかけなので転記しない。
   return dailies
     .filter(function (daily) {
-      return daily.dateKey < todayKey;
+      return Temporal.PlainDate.compare(daily.date, today) < 0;
     })
     .toSorted(compareDailies);
 }
@@ -53,7 +52,7 @@ function addToPlans(
   const existing = plans.find(function (candidate) {
     return (
       candidate.destinationPageId === plan.destinationPageId &&
-      candidate.dateKey === plan.dateKey
+      candidate.date.equals(plan.date)
     );
   });
 
@@ -71,21 +70,21 @@ function addToPlans(
 export function planTransfers<K>(
   period: PeriodDefinition<K>,
   dailies: readonly EndedDaily[],
-  destinations: readonly Pick<PeriodArchive<K>, "id" | "key" | "isLocked" | "transferredDateKeys">[],
-  now: Date,
+  destinations: readonly Pick<PeriodArchive<K>, "id" | "key" | "isLocked" | "transferredDates">[],
+  today: Temporal.PlainDate,
 ): readonly TransferPlan[] {
-  return listEndedDailies(dailies, now).reduce<readonly TransferPlan[]>(function (
+  return listEndedDailies(dailies, today).reduce<readonly TransferPlan[]>(function (
     plans,
     daily,
   ) {
-    const dailyKey = keyOfDateKey(period, daily.dateKey);
+    const dailyKey = period.keyOf(daily.date);
     const destination = destinations.find(function (candidate) {
       return period.compare(candidate.key, dailyKey) === 0;
     });
     if (
       destination === undefined ||
       destination.isLocked ||
-      isTransferred(destination, daily.dateKey)
+      isTransferred(destination, daily.date)
     ) {
       return plans;
     }
@@ -95,8 +94,8 @@ export function planTransfers<K>(
       {
         periodType: period.type,
         destinationPageId: destination.id,
-        dateKey: daily.dateKey,
-        title: formatDailyTitleFromDateKey(daily.dateKey),
+        date: daily.date,
+        title: formatDailyTitle(daily.date),
         dailyPageIds: [],
       },
       daily.id,

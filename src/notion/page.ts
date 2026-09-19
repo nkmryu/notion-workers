@@ -9,7 +9,7 @@ import type { PeriodDefinition } from "../diary/period";
 
 import { isFullPage } from "@notionhq/client";
 
-import { resolveDailyDateKey } from "../diary/daily-title";
+import { resolveDailyDate } from "../diary/daily-title";
 import { PERIOD_TYPE } from "../diary/page";
 import { resolvePeriodKey } from "../diary/period";
 
@@ -75,7 +75,7 @@ export function toDailyPage(row: Row): DailyPage {
     createdTime: page.created_time,
     title,
     isLocked: page.is_locked,
-    dateKey: resolveDailyDateKey({ title, createdTime: page.created_time }),
+    date: resolveDailyDate({ title, createdTime: page.created_time }),
   };
 }
 

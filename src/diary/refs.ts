@@ -1,6 +1,6 @@
-import type { DateKey } from "./jst-date";
+import type { Temporal } from "temporal-polyfill";
+
 import type { DailyPage, PeriodArchive } from "./page";
-import type { CalendarMonth } from "./calendar-month";
 import type { CollectedRef, ResolvedRef } from "./ref-title";
 
 import { createSectionHeader, stripFencedCode } from "./markdown-section";
@@ -115,15 +115,18 @@ export function hasRefsSection(markdown: string): boolean {
 
 // Refs は月が閉じる直前に一度だけ作る。ロック済みで Refs の無い過去月は、閉じ忘れとして補完する。
 export function shouldGenerateRefs(
-  archive: Pick<PeriodArchive<CalendarMonth>, "key" | "isLocked" | "transferredDateKeys" | "hasRefs">,
-  dailies: readonly Pick<DailyPage, "dateKey">[],
-  now: Date,
+  archive: Pick<
+    PeriodArchive<Temporal.PlainYearMonth>,
+    "key" | "isLocked" | "transferredDates" | "hasRefs"
+  >,
+  dailies: readonly Pick<DailyPage, "date">[],
+  today: Temporal.PlainDate,
 ): boolean {
   if (archive.hasRefs) {
     return false;
   }
 
-  const isPastMonth = monthly.compare(archive.key, monthly.keyOfDate(now)) === -1;
+  const isPastMonth = monthly.compare(archive.key, monthly.keyOf(today)) === -1;
 
-  return isPastMonth && (archive.isLocked || isFullyTransferred(monthly, archive, dailies, now));
+  return isPastMonth && (archive.isLocked || isFullyTransferred(monthly, archive, dailies, today));
 }

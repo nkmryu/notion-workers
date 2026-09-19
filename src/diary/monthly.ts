@@ -1,20 +1,19 @@
-import type { CalendarMonth } from "./calendar-month";
 import type { PeriodDefinition } from "./period";
 
+import { Temporal } from "temporal-polyfill";
+
+import { formatCalendarMonthTitle, parseCalendarMonthTitle } from "./calendar-month";
 import { PERIOD_TYPE } from "./page";
 
-import {
-  compareCalendarMonths,
-  formatCalendarMonthTitle,
-  getJstCalendarMonth,
-  parseCalendarMonthTitle,
-} from "./calendar-month";
-
-export const monthly: PeriodDefinition<CalendarMonth> = {
+export const monthly: PeriodDefinition<Temporal.PlainYearMonth> = {
   type: PERIOD_TYPE.monthly,
   hasBeforeLockStep: true,
-  keyOfDate: getJstCalendarMonth,
-  compare: compareCalendarMonths,
+  keyOf(date) {
+    return date.toPlainYearMonth();
+  },
+  compare(left, right) {
+    return Temporal.PlainYearMonth.compare(left, right);
+  },
   formatTitle: formatCalendarMonthTitle,
   parseTitle: parseCalendarMonthTitle,
   yearOf(month) {

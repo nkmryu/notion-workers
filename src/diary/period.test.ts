@@ -1,8 +1,7 @@
+import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import type { DateKey } from "./jst-date";
 
-import { parseDateKey } from "./jst-date";
 import { monthly } from "./monthly";
 import {
   decidePeriodPageAction,
@@ -12,14 +11,16 @@ import {
 import { weekly } from "./weekly";
 
 // 2026-07-22（水）= 26.W30 / 26.M07
-const now = new Date("2026-07-22T03:00:00.000Z");
+const today = Temporal.PlainDate.from("2026-07-22");
 
-function daily(text: string): { readonly dateKey: DateKey } {
-  return { dateKey: parseDateKey(text) };
+function daily(text: string): { readonly date: Temporal.PlainDate } {
+  return { date: Temporal.PlainDate.from(text) };
 }
 
-function dateKeys(...texts: readonly string[]): readonly DateKey[] {
-  return texts.map(parseDateKey);
+function dates(...texts: readonly string[]): readonly Temporal.PlainDate[] {
+  return texts.map(function (text) {
+    return Temporal.PlainDate.from(text);
+  });
 }
 
 describe("Weekly のアクション決定", () => {
@@ -27,7 +28,7 @@ describe("Weekly のアクション決定", () => {
     key: { year: 2026, week: 29 },
     title: "26.W29",
     isLocked: false,
-    transferredDateKeys: dateKeys("2026-07-13", "2026-07-14"),
+    transferredDates: dates("2026-07-13", "2026-07-14"),
   };
   const lastWeekDailies = [daily("2026-07-13"), daily("2026-07-14")];
 
@@ -36,9 +37,9 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 30 }, title: "新規ページ", isLocked: false, transferredDateKeys: [] },
+        { key: { year: 2026, week: 30 }, title: "新規ページ", isLocked: false, transferredDates: [] },
         [],
-        now,
+        today,
       ),
     ).toEqual({ type: "rename", title: "26.W30" });
   });
@@ -52,17 +53,17 @@ describe("Weekly のアクション決定", () => {
           key: { year: 2026, week: 30 },
           title: "26.W30",
           isLocked: false,
-          transferredDateKeys: dateKeys("2026-07-20"),
+          transferredDates: dates("2026-07-20"),
         },
         [daily("2026-07-20")],
-        now,
+        today,
       ),
     ).toEqual({ type: "none" });
   });
 
   it("先週の全 daily が転記済みなら未ロックの週次ページをロックする", () => {
     // 過去週の全日の転記が揃ったときだけ閉じることを保証する。
-    expect(decidePeriodPageAction(weekly, lastWeek, lastWeekDailies, now)).toEqual({
+    expect(decidePeriodPageAction(weekly, lastWeek, lastWeekDailies, today)).toEqual({
       type: "lock",
     });
   });
@@ -72,9 +73,9 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        { ...lastWeek, transferredDateKeys: dateKeys("2026-07-13") },
+        { ...lastWeek, transferredDates: dates("2026-07-13") },
         lastWeekDailies,
-        now,
+        today,
       ),
     ).toEqual({ type: "none" });
   });
@@ -82,14 +83,14 @@ describe("Weekly のアクション決定", () => {
   it("タイトルが期待と違えばロック可能でもまずリネームする", () => {
     // テンプレートが上書きしたタイトルを、閉じる前に収束させることを保証する。
     expect(
-      decidePeriodPageAction(weekly, { ...lastWeek, title: "" }, lastWeekDailies, now),
+      decidePeriodPageAction(weekly, { ...lastWeek, title: "" }, lastWeekDailies, today),
     ).toEqual({ type: "rename", title: "26.W29" });
   });
 
   it("ロック済みの週次ページには何もしない", () => {
     // ロック済みページへ PATCH を重ねないことを保証する。
     expect(
-      decidePeriodPageAction(weekly, { ...lastWeek, isLocked: true }, lastWeekDailies, now),
+      decidePeriodPageAction(weekly, { ...lastWeek, isLocked: true }, lastWeekDailies, today),
     ).toEqual({ type: "none" });
   });
 
@@ -98,9 +99,9 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 31 }, title: "仮", isLocked: false, transferredDateKeys: [] },
+        { key: { year: 2026, week: 31 }, title: "仮", isLocked: false, transferredDates: [] },
         [],
-        now,
+        today,
       ),
     ).toEqual({ type: "none" });
   });
@@ -114,7 +115,7 @@ describe("Weekly の作成計画", () => {
         weekly,
         [daily("2026-07-13"), daily("2026-06-29"), daily("2026-07-06")],
         [],
-        now,
+        today,
       ),
     ).toEqual([
       { key: { year: 2026, week: 27 }, title: "26.W27" },
@@ -130,7 +131,7 @@ describe("Weekly の作成計画", () => {
         weekly,
         [daily("2026-07-06")],
         [{ key: { year: 2026, week: 28 } }],
-        now,
+        today,
       ),
     ).toEqual([]);
   });
@@ -142,7 +143,7 @@ describe("Weekly の作成計画", () => {
         weekly,
         [daily("2026-07-20"), daily("2026-07-22"), daily("2026-07-19")],
         [],
-        now,
+        today,
       ).map(function (plan) {
         return plan.title;
       }),
@@ -156,7 +157,7 @@ describe("Weekly の作成計画", () => {
         weekly,
         [daily("2026-07-26"), daily("2026-07-27")],
         [],
-        new Date("2026-07-26T17:00:00.000Z"),
+        Temporal.PlainDate.from("2026-07-27"),
       ).map(function (plan) {
         return plan.title;
       }),
@@ -170,7 +171,7 @@ describe("Weekly の作成計画", () => {
         weekly,
         [daily("2026-07-13"), daily("2026-07-14"), daily("2026-07-19")],
         [],
-        now,
+        today,
       ),
     ).toEqual([{ key: { year: 2026, week: 29 }, title: "26.W29" }]);
   });
@@ -178,37 +179,37 @@ describe("Weekly の作成計画", () => {
   it("daily が存在しない週は作成対象にしない", () => {
     // weekly だけがあるデータから別週のページを推測して作らないことを保証する。
     expect(
-      planMissingPeriodPages(weekly, [], [{ key: { year: 2026, week: 28 } }], now),
+      planMissingPeriodPages(weekly, [], [{ key: { year: 2026, week: 28 } }], today),
     ).toEqual([]);
   });
 
   it("年末年始の daily を ISO 週基準年の週へ帰属させる", () => {
     // 暦年ではなく ISO 週基準年で週次ページを作ることを保証する。
-    expect(planMissingPeriodPages(weekly, [daily("2024-12-30")], [], now)).toEqual([
+    expect(planMissingPeriodPages(weekly, [daily("2024-12-30")], [], today)).toEqual([
       { key: { year: 2025, week: 1 }, title: "25.W01" },
     ]);
   });
 });
 
 describe("Weekly の転記完了判定", () => {
-  const lastWeek = { key: { year: 2026, week: 29 }, transferredDateKeys: dateKeys("2026-07-13", "2026-07-14") };
+  const lastWeek = { key: { year: 2026, week: 29 }, transferredDates: dates("2026-07-13", "2026-07-14") };
   const dailies = [daily("2026-07-13"), daily("2026-07-14")];
 
   it("その週の全 daily が転記済みなら完了", () => {
     // 過去週の全日が転記済みのときだけ完了と判定することを保証する。
-    expect(isFullyTransferred(weekly, lastWeek, dailies, now)).toBe(true);
+    expect(isFullyTransferred(weekly, lastWeek, dailies, today)).toBe(true);
   });
 
   it("未転記の daily が残る過去週は未完了", () => {
     // 1 日でも転記が欠けていれば未完了とすることを保証する。
     expect(
-      isFullyTransferred(weekly, { ...lastWeek, transferredDateKeys: dateKeys("2026-07-13") }, dailies, now),
+      isFullyTransferred(weekly, { ...lastWeek, transferredDates: dates("2026-07-13") }, dailies, today),
     ).toBe(false);
   });
 
   it("別の週の daily は完了条件に含めない", () => {
     // 他の週の未転記が対象週の完了判定を妨げないことを保証する。
-    expect(isFullyTransferred(weekly, lastWeek, [...dailies, daily("2026-07-06")], now)).toBe(
+    expect(isFullyTransferred(weekly, lastWeek, [...dailies, daily("2026-07-06")], today)).toBe(
       true,
     );
   });
@@ -218,9 +219,9 @@ describe("Weekly の転記完了判定", () => {
     expect(
       isFullyTransferred(
         weekly,
-        { key: { year: 2026, week: 30 }, transferredDateKeys: dateKeys("2026-07-20") },
+        { key: { year: 2026, week: 30 }, transferredDates: dates("2026-07-20") },
         [daily("2026-07-20")],
-        now,
+        today,
       ),
     ).toBe(false);
   });
@@ -231,17 +232,17 @@ describe("Monthly の作成計画", () => {
 
   it("Daily の日が属する月を古い順にすべて返す", () => {
     // 古い未作成月から残さず計画することを保証する。
-    expect(planMissingPeriodPages(monthly, dailies, [], now)).toEqual([
-      { key: { year: 2025, month: 12 }, title: "25.M12" },
-      { key: { year: 2026, month: 1 }, title: "26.M01" },
-      { key: { year: 2026, month: 2 }, title: "26.M02" },
+    expect(planMissingPeriodPages(monthly, dailies, [], today)).toEqual([
+      { key: Temporal.PlainYearMonth.from({ year: 2025, month: 12 }), title: "25.M12" },
+      { key: Temporal.PlainYearMonth.from({ year: 2026, month: 1 }), title: "26.M01" },
+      { key: Temporal.PlainYearMonth.from({ year: 2026, month: 2 }), title: "26.M02" },
     ]);
   });
 
   it("既存月を除外する", () => {
     // 既存 Monthly の月を重複作成しないことを保証する。
     expect(
-      planMissingPeriodPages(monthly, dailies, [{ key: { year: 2025, month: 12 } }], now).map(
+      planMissingPeriodPages(monthly, dailies, [{ key: Temporal.PlainYearMonth.from({ year: 2025, month: 12 }) }], today).map(
         function (plan) {
           return plan.title;
         },
@@ -252,7 +253,7 @@ describe("Monthly の作成計画", () => {
   it("進行中の月は Daily があっても作成しない", () => {
     // Monthly を月の終了後にまとめて作成・転記・Refs・ロックする前提で、今月のページを先に作らないことを保証する。
     expect(
-      planMissingPeriodPages(monthly, [...dailies, daily("2026-07-01")], [], now).map(
+      planMissingPeriodPages(monthly, [...dailies, daily("2026-07-01")], [], today).map(
         function (plan) {
           return plan.title;
         },
@@ -267,7 +268,7 @@ describe("Monthly の作成計画", () => {
         monthly,
         [daily("2026-07-31")],
         [],
-        new Date("2026-07-31T17:00:00.000Z"),
+        Temporal.PlainDate.from("2026-08-01"),
       ).map(function (plan) {
         return plan.title;
       }),
@@ -277,23 +278,23 @@ describe("Monthly の作成計画", () => {
   it("Daily がない月は作成しない", () => {
     // Monthly だけの月から別の作成対象を推測しないことを保証する。
     expect(
-      planMissingPeriodPages(monthly, [], [{ key: { year: 2026, month: 7 } }], now),
+      planMissingPeriodPages(monthly, [], [{ key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }) }], today),
     ).toEqual([]);
   });
 });
 
 describe("Monthly のアクション決定", () => {
   const lastMonth = {
-    key: { year: 2026, month: 6 },
+    key: Temporal.PlainYearMonth.from({ year: 2026, month: 6 }),
     title: "26.M06",
     isLocked: false,
-    transferredDateKeys: dateKeys("2026-06-01", "2026-06-02"),
+    transferredDates: dates("2026-06-01", "2026-06-02"),
   };
   const dailies = [daily("2026-06-01"), daily("2026-06-02")];
 
   it("全 Daily が転記済みの過去月をロックする", () => {
     // 終了月の全日が転記済みの場合だけ閉じることを保証する。
-    expect(decidePeriodPageAction(monthly, lastMonth, dailies, now)).toEqual({ type: "lock" });
+    expect(decidePeriodPageAction(monthly, lastMonth, dailies, today)).toEqual({ type: "lock" });
   });
 
   it("未転記 Daily がある過去月をロックしない", () => {
@@ -301,9 +302,9 @@ describe("Monthly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         monthly,
-        { ...lastMonth, transferredDateKeys: dateKeys("2026-06-01") },
+        { ...lastMonth, transferredDates: dates("2026-06-01") },
         dailies,
-        now,
+        today,
       ),
     ).toEqual({ type: "none" });
   });
@@ -313,9 +314,9 @@ describe("Monthly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         monthly,
-        { key: { year: 2026, month: 7 }, title: "テンプレート", isLocked: false, transferredDateKeys: [] },
+        { key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }), title: "テンプレート", isLocked: false, transferredDates: [] },
         [],
-        now,
+        today,
       ),
     ).toEqual({ type: "rename", title: "26.M07" });
   });

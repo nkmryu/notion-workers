@@ -1,3 +1,5 @@
+import type { Temporal } from "temporal-polyfill";
+
 import type { DailyPage } from "../diary/page";
 import type { DiaryStore } from "./diary-store";
 
@@ -15,12 +17,12 @@ export async function maintainDailies(
   diary: DiaryStore,
   templateId: string,
   dailies: readonly DailyPage[],
-  now: Date,
+  today: Temporal.PlainDate,
 ): Promise<DailyMaintenanceResult> {
   let created = 0;
 
-  if (shouldCreateTodayPage(dailies, now)) {
-    await diary.createPageFromTemplate({ templateId, title: formatDailyTitle(now) });
+  if (shouldCreateTodayPage(dailies, today)) {
+    await diary.createPageFromTemplate({ templateId, title: formatDailyTitle(today) });
     created = 1;
   }
 
@@ -28,7 +30,7 @@ export async function maintainDailies(
   let locks = 0;
 
   for (const daily of dailies) {
-    const action = decideDailyPageAction(daily, now);
+    const action = decideDailyPageAction(daily, today);
 
     if (action.type === PAGE_ACTION_TYPE.rename) {
       await diary.renamePage(daily.id, action.title);
