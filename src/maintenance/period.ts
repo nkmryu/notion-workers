@@ -6,8 +6,8 @@ import { PAGE_ACTION_TYPE } from "../diary/daily";
 import { decidePeriodPageAction, planMissingPeriodPages } from "../diary/period";
 import { transferEndedDailies } from "./transfer";
 
-// ロック前の仕上げ（Monthly の Refs）。ロック済みで仕上げが無いページの補完も担う。
-export interface FinalizeInput<K> {
+// ロック前に行う工程（Monthly の Refs）への入力。工程を飛ばしてロックされたページの補完も担う。
+export interface BeforeLockInput<K> {
   readonly archives: readonly PeriodArchive<K>[];
   readonly dailies: readonly DailyPage[];
   readonly now: Date;
@@ -16,14 +16,14 @@ export interface FinalizeInput<K> {
 export interface PeriodMaintenance<K, F> {
   readonly period: PeriodDefinition<K>;
   readonly templateId: string;
-  readonly finalize: (input: FinalizeInput<K>) => Promise<F>;
+  readonly beforeLock: (input: BeforeLockInput<K>) => Promise<F>;
 }
 
 export interface PeriodMaintenanceResult<F> {
   readonly created: number;
   readonly daysTransferred: number;
   readonly fallbackDates: readonly string[];
-  readonly finalized: F;
+  readonly beforeLockResult: F;
   readonly renames: number;
   readonly locks: number;
 }
@@ -44,7 +44,7 @@ async function createPeriodPages<K>(
   return created;
 }
 
-// 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、仕上げてからリネーム・ロックする。
+// 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、ロック前の工程を済ませてからリネーム・ロックする。
 export async function maintainPeriod<K, F>(
   diary: DiaryStore,
   maintenance: PeriodMaintenance<K, F>,
@@ -72,7 +72,7 @@ export async function maintainPeriod<K, F>(
     const action = decidePeriodPageAction(period, archive, dailies, now);
     return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page: archive, action }];
   });
-  const finalized = await maintenance.finalize({ archives: transfer.archives, dailies, now });
+  const beforeLockResult = await maintenance.beforeLock({ archives: transfer.archives, dailies, now });
   let renames = 0;
   let locks = 0;
 
@@ -90,7 +90,7 @@ export async function maintainPeriod<K, F>(
     created: createdPages.length,
     daysTransferred: transfer.daysTransferred,
     fallbackDates: transfer.fallbackDates,
-    finalized,
+    beforeLockResult,
     renames,
     locks,
   };

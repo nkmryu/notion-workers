@@ -1,6 +1,11 @@
 export const JST_TIME_ZONE = "Asia/Tokyo";
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+declare const DATE_KEY_BRAND: unique symbol;
+// JST の暦日を "2026-07-22" 形式で表す値。文字列比較がそのまま日付順になる。
+// 生成は getJstDateKey / parseDateKey に限り、タイトル等の任意の文字列と取り違えないようブランドを付ける。
+export type DateKey = string & { readonly [DATE_KEY_BRAND]: true };
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: JST_TIME_ZONE,
   year: "numeric",
@@ -37,13 +42,29 @@ export function getJstCalendarDate(date: Date): CalendarDate {
   return { year, month, day };
 }
 
-// 日付キーは "2026-07-22" 形式。文字列比較がそのまま日付順になる。
-export function getJstDateKey(date: Date): string {
-  const { year, month, day } = getJstCalendarDate(date);
-
-  return `${year.toString().padStart(4, "0")}-${month
+export function formatDateKey({ year, month, day }: CalendarDate): DateKey {
+  const text = `${year.toString().padStart(4, "0")}-${month
     .toString()
     .padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+
+  return text as DateKey;
+}
+
+export function getJstDateKey(date: Date): DateKey {
+  return formatDateKey(getJstCalendarDate(date));
+}
+
+export function parseDateKey(text: string): DateKey {
+  const match = DATE_KEY_PATTERN.exec(text);
+  const [, yearText, monthText, dayText] = match ?? [];
+
+  if (yearText === undefined || monthText === undefined || dayText === undefined) {
+    throw new Error(`日付キーが不正です: ${text}`);
+  }
+
+  calendarDateToUtcDate(Number(yearText), Number(monthText), Number(dayText), text);
+
+  return text as DateKey;
 }
 
 export function calendarDateToUtcDate(
@@ -65,24 +86,10 @@ export function calendarDateToUtcDate(
   return date;
 }
 
-export function dateKeyToDate(dateKey: string): Date {
-  const match = DATE_KEY_PATTERN.exec(dateKey);
-  const [, yearText, monthText, dayText] = match ?? [];
+export function dateKeyToDate(dateKey: DateKey): Date {
+  const [year, month, day] = dateKey.split("-").map(Number);
 
-  if (
-    yearText === undefined ||
-    monthText === undefined ||
-    dayText === undefined
-  ) {
-    throw new Error(`日付キーが不正です: ${dateKey}`);
-  }
-
-  return calendarDateToUtcDate(
-    Number(yearText),
-    Number(monthText),
-    Number(dayText),
-    dateKey,
-  );
+  return calendarDateToUtcDate(year ?? 0, month ?? 0, day ?? 0, dateKey);
 }
 
 export function parseCreatedTime(createdTime: string): Date {

@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type { PageAction } from "./daily";
 import type { DailyPage, PeriodArchive, PeriodPage, PeriodType } from "./page";
 
@@ -7,8 +8,8 @@ import { dateKeyToDate, getJstDateKey } from "./jst-date";
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
 export interface PeriodDefinition<K> {
   readonly type: PeriodType;
-  // ロック後にも追記する工程（Monthly の Refs）を持つか。持つ期間はロック済みページの見出しも読む。
-  readonly finalizesAfterLock: boolean;
+  // ロック前に行う工程（Monthly の Refs）を持つか。持つ期間は、工程を飛ばしてロックされたページを補完するため、ロック済みでも状態を読む。
+  readonly hasBeforeLockStep: boolean;
   readonly keyOfDate: (date: Date) => K;
   readonly compare: (left: K, right: K) => -1 | 0 | 1;
   readonly formatTitle: (key: K) => string;
@@ -21,7 +22,7 @@ export interface PeriodCreationPlan<K> {
   readonly title: string;
 }
 
-export function keyOfDateKey<K>(period: PeriodDefinition<K>, dateKey: string): K {
+export function keyOfDateKey<K>(period: PeriodDefinition<K>, dateKey: DateKey): K {
   return period.keyOfDate(dateKeyToDate(dateKey));
 }
 
@@ -31,7 +32,7 @@ function isSameKey<K>(period: PeriodDefinition<K>, left: K, right: K): boolean {
 
 export function isTransferred<K>(
   archive: Pick<PeriodArchive<K>, "transferredDateKeys">,
-  dateKey: string,
+  dateKey: DateKey,
 ): boolean {
   return archive.transferredDateKeys.includes(dateKey);
 }

@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type { DailyPage, PeriodArchive } from "./page";
 import type { CalendarMonth } from "./calendar-month";
 import type { CollectedRef, ResolvedRef } from "./ref-title";

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import type { DateKey } from "./jst-date";
+
+import { parseDateKey } from "./jst-date";
 import { monthly } from "./monthly";
 import {
   decidePeriodPageAction,
@@ -11,8 +14,12 @@ import { weekly } from "./weekly";
 // 2026-07-22（水）= 26.W30 / 26.M07
 const now = new Date("2026-07-22T03:00:00.000Z");
 
-function daily(dateKey: string): { readonly dateKey: string } {
-  return { dateKey };
+function daily(text: string): { readonly dateKey: DateKey } {
+  return { dateKey: parseDateKey(text) };
+}
+
+function dateKeys(...texts: readonly string[]): readonly DateKey[] {
+  return texts.map(parseDateKey);
 }
 
 describe("Weekly のアクション決定", () => {
@@ -20,7 +27,7 @@ describe("Weekly のアクション決定", () => {
     key: { year: 2026, week: 29 },
     title: "26.W29",
     isLocked: false,
-    transferredDateKeys: ["2026-07-13", "2026-07-14"],
+    transferredDateKeys: dateKeys("2026-07-13", "2026-07-14"),
   };
   const lastWeekDailies = [daily("2026-07-13"), daily("2026-07-14")];
 
@@ -45,7 +52,7 @@ describe("Weekly のアクション決定", () => {
           key: { year: 2026, week: 30 },
           title: "26.W30",
           isLocked: false,
-          transferredDateKeys: ["2026-07-20"],
+          transferredDateKeys: dateKeys("2026-07-20"),
         },
         [daily("2026-07-20")],
         now,
@@ -65,7 +72,7 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        { ...lastWeek, transferredDateKeys: ["2026-07-13"] },
+        { ...lastWeek, transferredDateKeys: dateKeys("2026-07-13") },
         lastWeekDailies,
         now,
       ),
@@ -184,7 +191,7 @@ describe("Weekly の作成計画", () => {
 });
 
 describe("Weekly の転記完了判定", () => {
-  const lastWeek = { key: { year: 2026, week: 29 }, transferredDateKeys: ["2026-07-13", "2026-07-14"] };
+  const lastWeek = { key: { year: 2026, week: 29 }, transferredDateKeys: dateKeys("2026-07-13", "2026-07-14") };
   const dailies = [daily("2026-07-13"), daily("2026-07-14")];
 
   it("その週の全 daily が転記済みなら完了", () => {
@@ -195,7 +202,7 @@ describe("Weekly の転記完了判定", () => {
   it("未転記の daily が残る過去週は未完了", () => {
     // 1 日でも転記が欠けていれば未完了とすることを保証する。
     expect(
-      isFullyTransferred(weekly, { ...lastWeek, transferredDateKeys: ["2026-07-13"] }, dailies, now),
+      isFullyTransferred(weekly, { ...lastWeek, transferredDateKeys: dateKeys("2026-07-13") }, dailies, now),
     ).toBe(false);
   });
 
@@ -211,7 +218,7 @@ describe("Weekly の転記完了判定", () => {
     expect(
       isFullyTransferred(
         weekly,
-        { key: { year: 2026, week: 30 }, transferredDateKeys: ["2026-07-20"] },
+        { key: { year: 2026, week: 30 }, transferredDateKeys: dateKeys("2026-07-20") },
         [daily("2026-07-20")],
         now,
       ),
@@ -280,7 +287,7 @@ describe("Monthly のアクション決定", () => {
     key: { year: 2026, month: 6 },
     title: "26.M06",
     isLocked: false,
-    transferredDateKeys: ["2026-06-01", "2026-06-02"],
+    transferredDateKeys: dateKeys("2026-06-01", "2026-06-02"),
   };
   const dailies = [daily("2026-06-01"), daily("2026-06-02")];
 
@@ -294,7 +301,7 @@ describe("Monthly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         monthly,
-        { ...lastMonth, transferredDateKeys: ["2026-06-01"] },
+        { ...lastMonth, transferredDateKeys: dateKeys("2026-06-01") },
         dailies,
         now,
       ),

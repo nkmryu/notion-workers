@@ -29,7 +29,7 @@ export async function runMaintenance(
     daily: await maintainDailies(diary, config.dailyTemplateId, dailies, now),
     weekly: await maintainPeriod(
       diary,
-      { period: weekly, templateId: config.weeklyTemplateId, async finalize() {} },
+      { period: weekly, templateId: config.weeklyTemplateId, async beforeLock() {} },
       dailies,
       weeklies,
       now,
@@ -40,7 +40,7 @@ export async function runMaintenance(
         period: monthly,
         templateId: config.monthlyTemplateId,
         // 閉じる前に、その月の外部 URL を Refs としてまとめる。
-        finalize(input) {
+        beforeLock(input) {
           return generateRefs(diary, input.archives, input.dailies, input.now);
         },
       },

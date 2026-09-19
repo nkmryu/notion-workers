@@ -46,10 +46,10 @@ async function listArchives<K>(
   let archives: readonly PeriodArchive<K>[] = [];
 
   for (const page of periodPages) {
-    // この実行で作った空ページと、仕上げ工程の無い期間のロック済みページは読まなくても状態が決まる。
+    // この実行で作った空ページと、ロック前の工程が無い期間のロック済みページは、読まなくても状態が決まる。
     const canSkipReading =
       createdPageIds.includes(page.id) ||
-      (page.isLocked && !period.finalizesAfterLock);
+      (page.isLocked && !period.hasBeforeLockStep);
     archives = [
       ...archives,
       {

@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type { DailyPage } from "./page";
 
 import { formatDailyTitleFromDateKey } from "./daily-title";

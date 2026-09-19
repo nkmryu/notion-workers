@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { parseDateKey } from "./jst-date";
 import {
   buildRefsSection,
   collectRefs,
@@ -137,11 +138,11 @@ describe("buildRefsSection", () => {
 
 describe("shouldGenerateRefs", () => {
   const now = new Date("2026-07-22T03:00:00.000Z");
-  const dailies = [{ dateKey: "2026-06-01" }, { dateKey: "2026-06-02" }];
+  const dailies = [{ dateKey: parseDateKey("2026-06-01") }, { dateKey: parseDateKey("2026-06-02") }];
   const pastMonthly = {
     key: { year: 2026, month: 6 },
     isLocked: false,
-    transferredDateKeys: ["2026-06-01", "2026-06-02"],
+    transferredDateKeys: ["2026-06-01", "2026-06-02"].map(parseDateKey),
     hasRefs: false,
   };
 
@@ -153,7 +154,7 @@ describe("shouldGenerateRefs", () => {
   it("未ロックの過去月は全日の転記が揃った場合だけ生成する", () => {
     // 日次転記が完了する前には Refs を確定せず、ロック直前だけ生成することを保証する。
     expect(
-      shouldGenerateRefs({ ...pastMonthly, transferredDateKeys: ["2026-06-01"] }, dailies, now),
+      shouldGenerateRefs({ ...pastMonthly, transferredDateKeys: ["2026-06-01"].map(parseDateKey) }, dailies, now),
     ).toBe(false);
     expect(shouldGenerateRefs(pastMonthly, dailies, now)).toBe(true);
   });

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { CalendarMonth } from "./calendar-month";
 import type { IsoWeek } from "./iso-week";
+import type { DateKey } from "./jst-date";
 import type { DailyPage, PeriodArchive } from "./page";
 
 import { parseDailyTitleDateKey } from "./daily-title";
+import { parseDateKey } from "./jst-date";
 import { monthly } from "./monthly";
 import { planTransfers } from "./transfer-plan";
 import { weekly } from "./weekly";
@@ -29,7 +31,7 @@ function daily(
 
 function weeklyPage(
   week: number,
-  transferredDateKeys: readonly string[] = [],
+  transferredDateKeys: readonly DateKey[] = [],
   isLocked = false,
 ): PeriodArchive<IsoWeek> {
   return {
@@ -50,7 +52,7 @@ describe("Weekly への転記計画", () => {
         weekly,
 
         [daily("daily-20", "26.07.20（月）")],
-        [weeklyPage(30, ["2026-07-20"])],
+        [weeklyPage(30, [parseDateKey("2026-07-20")])],
         now,
       ),
     ).toEqual([]);
@@ -214,7 +216,7 @@ describe("Monthly への転記計画", () => {
     expect(
       planTransfers(
         weekly,
-pages, [weeklyPage(30, ["2026-07-20"])], now),
+pages, [weeklyPage(30, [parseDateKey("2026-07-20")])], now),
     ).toEqual([]);
     expect(planTransfers(monthly, pages, [monthlyPage], now)).toEqual([
       {

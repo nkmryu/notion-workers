@@ -12,7 +12,7 @@ import {
 
 export const weekly: PeriodDefinition<IsoWeek> = {
   type: PERIOD_TYPE.weekly,
-  finalizesAfterLock: false,
+  hasBeforeLockStep: false,
   keyOfDate: getJstIsoWeek,
   compare: compareIsoWeeks,
   formatTitle: formatIsoWeekTitle,

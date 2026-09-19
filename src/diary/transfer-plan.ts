@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type { DailyPage, PeriodArchive, PeriodType } from "./page";
 import type { PeriodDefinition } from "./period";
 
@@ -8,7 +9,7 @@ import { isTransferred, keyOfDateKey } from "./period";
 export interface TransferPlan {
   readonly periodType: PeriodType;
   readonly destinationPageId: string;
-  readonly dateKey: string;
+  readonly dateKey: DateKey;
   readonly title: string;
   readonly dailyPageIds: readonly string[];
 }

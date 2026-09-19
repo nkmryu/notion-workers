@@ -1,4 +1,4 @@
-import { dateKeyToDate, getJstCalendarDate, resolveShortYear } from "./jst-date";
+import { getJstCalendarDate, resolveShortYear } from "./jst-date";
 
 const MONTHLY_TITLE_PATTERN = /^(\d{2})\.M(\d{2})$/;
 
@@ -10,11 +10,6 @@ export interface CalendarMonth {
 export function getJstCalendarMonth(date: Date): CalendarMonth {
   const { year, month } = getJstCalendarDate(date);
   return { year, month };
-}
-
-export function getDateKeyCalendarMonth(dateKey: string): CalendarMonth {
-  const date = dateKeyToDate(dateKey);
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
 }
 
 export function compareCalendarMonths(

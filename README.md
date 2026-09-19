@@ -59,7 +59,7 @@ src/
     diary-store.ts   DiaryStore ポート（日誌データベースへの 7 操作）と ContentRejectedError
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
     daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
-    period.ts        期間ページを最新状態にする（作成 → 転記 → 仕上げ → リネーム・ロック）
+    period.ts        期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
     transfer.ts, refs.ts, ref-title-lookup.ts
 ```
 

@@ -1,4 +1,11 @@
-import { calendarDateToUtcDate, dateKeyToDate, getJstCalendarDate } from "./jst-date";
+import type { DateKey } from "./jst-date";
+
+import {
+  calendarDateToUtcDate,
+  dateKeyToDate,
+  formatDateKey,
+  getJstCalendarDate,
+} from "./jst-date";
 
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAILY_TITLE_PATTERN =
@@ -20,12 +27,12 @@ export function formatDailyTitle(date: Date): string {
   return `${shortYear}.${paddedMonth}.${paddedDay}（${weekday}）`;
 }
 
-export function formatDailyTitleFromDateKey(dateKey: string): string {
+export function formatDailyTitleFromDateKey(dateKey: DateKey): string {
   return formatDailyTitle(dateKeyToDate(dateKey));
 }
 
 // 曜日文字は日付の同定に使わない。年・月・日だけで日付キーを決める。
-export function parseDailyTitleDateKey(title: string): string | null {
+export function parseDailyTitleDateKey(title: string): DateKey | null {
   const match = DAILY_TITLE_PATTERN.exec(title);
   const [, yearText, monthText, dayText] = match ?? [];
 
@@ -38,7 +45,9 @@ export function parseDailyTitleDateKey(title: string): string | null {
   }
 
   const year = 2000 + Number(yearText);
-  calendarDateToUtcDate(year, Number(monthText), Number(dayText), title);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  calendarDateToUtcDate(year, month, day, title);
 
-  return `${year.toString().padStart(4, "0")}-${monthText}-${dayText}`;
+  return formatDateKey({ year, month, day });
 }

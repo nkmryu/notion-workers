@@ -7,7 +7,7 @@ function formatSummary({ daily, weekly, monthly }: MaintenanceSummary): string {
   return [
     `Daily: 作成${daily.created} / リネーム${daily.renames} / ロック${daily.locks}`,
     `Weekly: 作成${weekly.created} / 転記${weekly.daysTransferred}日（省略${weekly.fallbackDates.length}） / リネーム${weekly.renames} / ロック${weekly.locks}`,
-    `Monthly: 作成${monthly.created} / 転記${monthly.daysTransferred}日（省略${monthly.fallbackDates.length}） / Refs${monthly.finalized.generated} / リネーム${monthly.renames} / ロック${monthly.locks}`,
+    `Monthly: 作成${monthly.created} / 転記${monthly.daysTransferred}日（省略${monthly.fallbackDates.length}） / Refs${monthly.beforeLockResult.generated} / リネーム${monthly.renames} / ロック${monthly.locks}`,
   ].join("\n");
 }
 

@@ -12,7 +12,7 @@ import {
 
 export const monthly: PeriodDefinition<CalendarMonth> = {
   type: PERIOD_TYPE.monthly,
-  finalizesAfterLock: true,
+  hasBeforeLockStep: true,
   keyOfDate: getJstCalendarMonth,
   compare: compareCalendarMonths,
   formatTitle: formatCalendarMonthTitle,

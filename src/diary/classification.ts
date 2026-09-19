@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type {
   DailyPage,
   DiaryPages,
@@ -15,7 +16,7 @@ import { weekly } from "./weekly";
 
 export type PageClassification =
   | { readonly kind: PeriodType }
-  | { readonly kind: typeof PAGE_KIND.daily; readonly dateKey: string }
+  | { readonly kind: typeof PAGE_KIND.daily; readonly dateKey: DateKey }
   | { readonly kind: typeof PAGE_KIND.memo };
 
 export function classifyPage(

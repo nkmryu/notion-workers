@@ -1,3 +1,4 @@
+import type { DateKey } from "./jst-date";
 import type { CalendarMonth } from "./calendar-month";
 import type { IsoWeek } from "./iso-week";
 
@@ -30,7 +31,7 @@ export interface DailyPage {
   readonly createdTime: string;
   readonly title: string;
   readonly isLocked: boolean;
-  readonly dateKey: string;
+  readonly dateKey: DateKey;
 }
 
 export interface PeriodPage<K> {
@@ -46,7 +47,7 @@ export type MonthlyPage = PeriodPage<CalendarMonth>;
 // 期間ページに、その時点の転記状態（どの日を転記済みか・Refs があるか）を添えたもの。
 // ロックと Refs の判断はこの状態だけで下せる。
 export interface PeriodArchive<K> extends PeriodPage<K> {
-  readonly transferredDateKeys: readonly string[];
+  readonly transferredDateKeys: readonly DateKey[];
   readonly hasRefs: boolean;
 }
 
