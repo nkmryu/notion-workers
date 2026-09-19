@@ -1,17 +1,17 @@
 import "dotenv/config";
 
-import type { DiaryStore } from "./maintenance/diary-store";
-import type { PageTitleSource } from "./maintenance/page-title-source";
+import type { DiaryRepository } from "./domain/diary-repository";
+import type { PageTitleSource } from "./application/page-title-source";
 
 import { Client } from "@notionhq/client";
 
-import { createNotionDiaryStore } from "./notion/client";
-import { createWebPageTitleSource } from "./web/page-title-lookup";
+import { createNotionDiaryRepository } from "./infrastructure/notion/diary-repository";
+import { createWebPageTitleSource } from "./infrastructure/web/page-title-lookup";
 
 const NOTION_VERSION = "2026-03-11";
 
 export interface Config {
-  readonly diary: DiaryStore;
+  readonly diary: DiaryRepository;
   readonly pageTitles: PageTitleSource;
   readonly dailyTemplateId: string;
   readonly weeklyTemplateId: string;
@@ -35,7 +35,7 @@ export function loadConfig(): Config {
   });
 
   return {
-    diary: createNotionDiaryStore(client, getRequiredEnv("NOTION_DATA_SOURCE_ID")),
+    diary: createNotionDiaryRepository(client, getRequiredEnv("NOTION_DATA_SOURCE_ID")),
     pageTitles: createWebPageTitleSource(),
     dailyTemplateId: getRequiredEnv("NOTION_TEMPLATE_ID"),
     weeklyTemplateId: getRequiredEnv("NOTION_WEEKLY_TEMPLATE_ID"),

@@ -35,43 +35,47 @@ Markdown への変換で失われるものは次のように扱います。
 
 ## コード構成
 
+DDD の層で分けています。依存は `application → domain`、`infrastructure → domain / application(ポート)` の一方向で、`domain/` は外部に依存しません。
+
 ```
 src/
-  main.ts            エントリポイント（npm run maintain）
-  config.ts          環境変数から設定と Notion クライアントを組み立てる
-  notion/            Notion API との境界。maintenance/diary-store.ts のポートを SDK で実装する
-    client.ts        DiaryStore の実装。種別ごとの取得、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
-    page.ts          行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
-    markdown-links.ts  Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
-    pacing.ts, error.ts
-  diary/             日誌の規則。API に依存しない純粋関数だけを置く
+  main.ts            エントリポイント（npm run maintain）。「今日」を JST で 1 回だけ決める
+  config.ts          合成ルート。環境変数を読み、infrastructure の実装をリポジトリ / ポートへ注入する
+  domain/            ドメイン層。純粋関数とエンティティだけを置く
     page.ts          種別・アクションの定数
     daily.ts         DailyPage エンティティ（期待タイトル・終了判定・アクション決定）とタイトル規則
     period.ts        PeriodPage / PeriodArchive エンティティ（自分の期間規則を持ち、転記完了とロックの不変条件を守る）と作成計画
     weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
-    transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
+    jst.ts           JST の暦日（Temporal.PlainDate）への変換
+    transfer.ts      転記計画（どの Daily をどの期間ページへ）
     transfer-markdown.ts    転記セクションの Markdown 組み立て
-    refs.ts          Refs の収集・タイトルの優先順位・セクション組み立て
+    refs.ts          Refs の収集・タイトルの優先順位・セクション組み立て・生成判定
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
-    jst.ts           JST の暦日（Temporal.PlainDate）への変換
-  web/               外部 Web ページの実装。PageTitleSource を fetch で実装する
-    page-title.ts    HTML からのタイトル抽出（og:title → <title>）
-    page-title-lookup.ts   タイムアウト・64KB 制限付きの取得。失敗は null に収束
+    diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧と 6 操作）と ContentRejectedError
+  application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
+    run-maintenance.ts      1 実行の流れ（Daily → Weekly → Monthly）
+    maintain-dailies.ts     Daily を最新状態にする（今日を作成 → 過去日をロック）
+    maintain-period.ts      期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
+    transfer-dailies.ts     終了した Daily の転記
+    generate-refs.ts        Monthly の Refs 生成（ロック前の工程）
+    page-actions.ts         リネーム / ロックの計画（データ）と適用、件数の導出
+    page-title-source.ts    PageTitleSource ポート（URL → タイトル | null）
+  infrastructure/    外部システムの実装
+    notion/
+      diary-repository.ts   DiaryRepository の Notion SDK 実装。種別ごとの取得、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
+      page-mapping.ts       行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
+      markdown-links.ts     Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
+      pacing.ts, error.ts
+    web/
+      page-title.ts         HTML からのタイトル抽出（og:title → <title>）
+      page-title-lookup.ts  PageTitleSource の fetch 実装。タイムアウト・64KB 制限・失敗は null
   shared/            層に属さない小さな部品
     sequence.ts      mapSequentially（順序依存の IO を可変変数なしに直列適用）と countBy
     lazy.ts          初回だけ計算するメモ化。本番コードで唯一の可変変数をここに閉じる
-  maintenance/       手続き。diary の判断に従って 2 つのポートを呼ぶ。notion/ と web/ には依存しない
-    page-actions.ts  リネーム / ロックの計画（データ）と適用、件数の導出
-    diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
-    page-title-source.ts   PageTitleSource ポート（URL → タイトル | null）
-    run.ts           1 実行の流れ（Daily → Weekly → Monthly）
-    daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）。何をするかを先にデータとして組み立て、まとめて適用する
-    period.ts        期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
-    transfer.ts, refs.ts
 ```
 
-Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定義（期間キーの求め方・比較・タイトル）だけで、判断と手続きは共通です。
+リポジトリは 1 つ（`DiaryRepository`）で、Daily / Weekly / Monthly の一覧をそれぞれ返します。3 種は同じ Notion データベースの行で、リネーム・ロック・本文の読み書きも共通なので、集約ごとに分けていません。
 
 ## セットアップ
 

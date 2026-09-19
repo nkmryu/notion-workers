@@ -6,9 +6,9 @@ import type {
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import { monthly } from "../diary/monthly";
-import { weekly } from "../diary/weekly";
-import { parseDataSourceTitleKey, toDailyPage, toPeriodPage } from "./page";
+import { monthly } from "../../domain/monthly";
+import { weekly } from "../../domain/weekly";
+import { parseDataSourceTitleKey, toDailyPage, toPeriodPage } from "./page-mapping";
 
 // SDK のレスポンス型は全フィールド必須なので、テストで検証する項目だけを持つ最小フィクスチャを型へ合わせる。
 function createRow(

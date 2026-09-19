@@ -1,15 +1,15 @@
 import type { Temporal } from "temporal-polyfill";
 
 import type { Config } from "../config";
-import type { DailyMaintenanceResult } from "./daily";
-import type { PeriodMaintenanceResult } from "./period";
-import type { RefsResult } from "./refs";
+import type { DailyMaintenanceResult } from "./maintain-dailies";
+import type { PeriodMaintenanceResult } from "./maintain-period";
+import type { RefsResult } from "./generate-refs";
 
-import { monthly } from "../diary/monthly";
-import { weekly } from "../diary/weekly";
-import { maintainDailies } from "./daily";
-import { maintainPeriod } from "./period";
-import { generateRefs } from "./refs";
+import { monthly } from "../domain/monthly";
+import { weekly } from "../domain/weekly";
+import { maintainDailies } from "./maintain-dailies";
+import { maintainPeriod } from "./maintain-period";
+import { generateRefs } from "./generate-refs";
 
 export interface MaintenanceSummary {
   readonly daily: DailyMaintenanceResult;

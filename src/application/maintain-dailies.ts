@@ -1,10 +1,10 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage } from "../diary/daily";
-import type { DiaryStore } from "./diary-store";
+import type { DailyPage } from "../domain/daily";
+import type { DiaryRepository } from "../domain/diary-repository";
 import type { PageActionCounts } from "./page-actions";
 
-import { formatDailyTitle, shouldCreateTodayPage } from "../diary/daily";
+import { formatDailyTitle, shouldCreateTodayPage } from "../domain/daily";
 import { applyPageActions, planPageAction } from "./page-actions";
 import { mapSequentially } from "../shared/sequence";
 
@@ -14,7 +14,7 @@ export interface DailyMaintenanceResult extends PageActionCounts {
 
 // Daily を最新状態にする: 今日の分が無ければ作り、今日の分のタイトルを整え、過去日をロックする。
 export async function maintainDailies(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   templateId: string,
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,

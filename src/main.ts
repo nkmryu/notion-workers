@@ -1,10 +1,10 @@
-import type { MaintenanceSummary } from "./maintenance/run";
+import type { MaintenanceSummary } from "./application/run-maintenance";
 
 import { Temporal } from "temporal-polyfill";
 
 import { loadConfig } from "./config";
-import { toJstDate } from "./diary/jst";
-import { runMaintenance } from "./maintenance/run";
+import { toJstDate } from "./domain/jst";
+import { runMaintenance } from "./application/run-maintenance";
 
 function formatSummary({ daily, weekly, monthly }: MaintenanceSummary): string {
   return [

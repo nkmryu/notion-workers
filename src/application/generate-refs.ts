@@ -1,22 +1,22 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage } from "../diary/daily";
-import type { PeriodArchive } from "../diary/period";
-import type { CollectedRef, RefTitleSource, ResolvedRef } from "../diary/refs";
-import type { DiaryStore } from "./diary-store";
+import type { DailyPage } from "../domain/daily";
+import type { PeriodArchive } from "../domain/period";
+import type { CollectedRef, RefTitleSource, ResolvedRef } from "../domain/refs";
+import type { DiaryRepository } from "../domain/diary-repository";
 import type { PageTitleSource } from "./page-title-source";
 
-import { REF_TITLE_SOURCE } from "../diary/refs";
+import { REF_TITLE_SOURCE } from "../domain/refs";
 import { countBy, mapSequentially } from "../shared/sequence";
 
-import { monthly } from "../diary/monthly";
+import { monthly } from "../domain/monthly";
 import {
   buildRefsSection,
   collectRefs,
   hasRefsSection,
   selectRefTitle,
   shouldGenerateRefs,
-} from "../diary/refs";
+} from "../domain/refs";
 
 export type RefTitleResolutionCounts = Readonly<Record<RefTitleSource, number>>;
 
@@ -84,7 +84,7 @@ interface RefsOutcome {
 }
 
 async function generateRefsFor(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   titles: PageTitleSource,
   archive: PeriodArchive<Temporal.PlainYearMonth>,
 ): Promise<RefsOutcome> {
@@ -108,7 +108,7 @@ async function generateRefsFor(
 
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   titles: PageTitleSource,
   archives: readonly PeriodArchive<Temporal.PlainYearMonth>[],
   dailies: readonly DailyPage[],

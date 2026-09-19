@@ -1,14 +1,14 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage } from "../diary/daily";
-import type { PeriodArchive, PeriodDefinition } from "../diary/period";
-import type { DiaryStore } from "./diary-store";
+import type { DailyPage } from "../domain/daily";
+import type { PeriodArchive, PeriodDefinition } from "../domain/period";
+import type { DiaryRepository } from "../domain/diary-repository";
 import type { PageActionCounts } from "./page-actions";
 
-import { PeriodPage, planMissingPeriodPages } from "../diary/period";
+import { PeriodPage, planMissingPeriodPages } from "../domain/period";
 import { applyPageActions, planPageAction } from "./page-actions";
 import { mapSequentially } from "../shared/sequence";
-import { transferEndedDailies } from "./transfer";
+import { transferEndedDailies } from "./transfer-dailies";
 
 // ロック前に行う工程（Monthly の Refs）への入力。工程を飛ばしてロックされたページの補完も担う。
 export interface BeforeLockInput<K> {
@@ -32,7 +32,7 @@ export interface PeriodMaintenanceResult<F> extends PageActionCounts {
 
 // 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、ロック前の工程を済ませてからリネーム・ロックする。
 export async function maintainPeriod<K, F>(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   { period, templateId, beforeLock }: PeriodMaintenance<K, F>,
   dailies: readonly DailyPage[],
   existingPages: readonly PeriodPage<K>[],

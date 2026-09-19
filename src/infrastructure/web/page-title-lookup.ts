@@ -1,4 +1,4 @@
-import type { PageTitleSource } from "../maintenance/page-title-source";
+import type { PageTitleSource } from "../../application/page-title-source";
 
 import { extractHtmlTitle, isHtmlContentType } from "./page-title";
 

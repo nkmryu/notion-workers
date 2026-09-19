@@ -4,13 +4,13 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 
-import type { PeriodDefinition } from "../diary/period";
+import type { PeriodDefinition } from "../../domain/period";
 
 import { isFullPage } from "@notionhq/client";
 
-import { DailyPage, resolveDailyDate } from "../diary/daily";
-import { PERIOD_TYPE } from "../diary/page";
-import { PeriodPage, resolvePeriodKey } from "../diary/period";
+import { DailyPage, resolveDailyDate } from "../../domain/daily";
+import { PERIOD_TYPE } from "../../domain/page";
+import { PeriodPage, resolvePeriodKey } from "../../domain/period";
 
 // 種別は type select で表され、Notion 上の選択肢名と厳密に一致させる。
 export const PAGE_TYPE_PROPERTY_NAME = "type";

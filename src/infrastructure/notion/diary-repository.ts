@@ -1,7 +1,7 @@
 import type { Client } from "@notionhq/client";
 
-import { ContentRejectedError } from "../maintenance/diary-store";
-import type { DiaryStore } from "../maintenance/diary-store";
+import { ContentRejectedError } from "../../domain/diary-repository";
+import type { DiaryRepository } from "../../domain/diary-repository";
 
 import {
   collectAllDataSourceRows,
@@ -9,22 +9,22 @@ import {
   isFullDataSource,
 } from "@notionhq/client";
 
-import { JST_TIME_ZONE } from "../diary/jst";
-import { extractSectionTitles } from "../diary/markdown-section";
+import { JST_TIME_ZONE } from "../../domain/jst";
+import { extractSectionTitles } from "../../domain/markdown-section";
 import { isNotionValidationError } from "./error";
-import { lazy } from "../shared/lazy";
-import { mapSequentially } from "../shared/sequence";
+import { lazy } from "../../shared/lazy";
+import { mapSequentially } from "../../shared/sequence";
 import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";
 import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
-import { monthly } from "../diary/monthly";
-import { weekly } from "../diary/weekly";
+import { monthly } from "../../domain/monthly";
+import { weekly } from "../../domain/weekly";
 import {
   PAGE_TYPE_PROPERTY_NAME,
   PAGE_TYPE_SELECT_NAME,
   parseDataSourceTitleKey,
   toDailyPage,
   toPeriodPage,
-} from "./page";
+} from "./page-mapping";
 
 function createTitleProperty(title: string): {
   readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
@@ -33,10 +33,10 @@ function createTitleProperty(title: string): {
 }
 
 // Notion API の平均 3 req/s 制限に合わせ、各操作の後に待機する。429 と 5xx の再試行は SDK が行う。
-export function createNotionDiaryStore(
+export function createNotionDiaryRepository(
   client: Client,
   dataSourceId: string,
-): DiaryStore {
+): DiaryRepository {
   // タイトルプロパティ名は data source ごとに固定なので、1 実行で 1 回だけ取得する。
   const getTitleKey = lazy(async function () {
     const dataSource = await client.dataSources.retrieve({ data_source_id: dataSourceId });

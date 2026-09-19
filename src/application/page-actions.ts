@@ -1,7 +1,7 @@
-import type { PageAction } from "../diary/page";
-import type { DiaryStore } from "./diary-store";
+import type { PageAction } from "../domain/page";
+import type { DiaryRepository } from "../domain/diary-repository";
 
-import { PAGE_ACTION_TYPE } from "../diary/page";
+import { PAGE_ACTION_TYPE } from "../domain/page";
 import { countBy, mapSequentially } from "../shared/sequence";
 
 // ページ 1 件に対して決めた操作。none は含めない。
@@ -19,14 +19,14 @@ export function planPageAction(pageId: string, action: PageAction): readonly Pla
   return action.type === PAGE_ACTION_TYPE.none ? [] : [{ pageId, action }];
 }
 
-function applyPageAction(diary: DiaryStore, planned: PlannedPageAction): Promise<void> {
+function applyPageAction(diary: DiaryRepository, planned: PlannedPageAction): Promise<void> {
   return planned.action.type === PAGE_ACTION_TYPE.rename
     ? diary.renamePage(planned.pageId, planned.action.title)
     : diary.lockPage(planned.pageId);
 }
 
 export async function applyPageActions(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   planned: readonly PlannedPageAction[],
 ): Promise<PageActionCounts> {
   await mapSequentially(planned, function (item) {

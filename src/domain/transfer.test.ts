@@ -6,7 +6,7 @@ import type { IsoWeek } from "./weekly";
 import { DailyPage, parseDailyTitle } from "./daily";
 import { monthly } from "./monthly";
 import { PeriodArchive } from "./period";
-import { planTransfers } from "./transfer-plan";
+import { planTransfers } from "./transfer";
 import { weekly } from "./weekly";
 
 const today = Temporal.PlainDate.from("2026-07-22");

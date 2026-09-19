@@ -1,12 +1,12 @@
-import type { DailyPage } from "../diary/daily";
-import type { MonthlyPage } from "../diary/monthly";
-import type { WeeklyPage } from "../diary/weekly";
+import type { DailyPage } from "./daily";
+import type { MonthlyPage } from "./monthly";
+import type { WeeklyPage } from "./weekly";
 
-// 日誌データベースへの操作口。手続き層はこのポートだけに依存し、Notion SDK は notion/ が実装する。
+// 日誌データベースのリポジトリ。アプリケーション層はこのインターフェースだけに依存し、infrastructure/notion が実装する。
 // 一覧は種別ごとに取り、行から DailyPage / WeeklyPage / MonthlyPage への写像は実装側が行う。
 // getPageMarkdown が返す本文は、bookmark 等の外部 URL が復元済みで、ドメインがそのまま読める形にする。
 // getSectionTitles は転記状態の確認用で、本文の復元をせず最上位の見出しだけを返す。
-export interface DiaryStore {
+export interface DiaryRepository {
   readonly listDailies: () => Promise<readonly DailyPage[]>;
   readonly listWeeklies: () => Promise<readonly WeeklyPage[]>;
   readonly listMonthlies: () => Promise<readonly MonthlyPage[]>;

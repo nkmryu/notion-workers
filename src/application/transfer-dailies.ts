@@ -1,19 +1,19 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage } from "../diary/daily";
-import type { PeriodArchive, PeriodPage } from "../diary/period";
-import type { TransferPlan } from "../diary/transfer-plan";
-import type { DailyMarkdown } from "../diary/transfer-markdown";
-import type { DiaryStore } from "./diary-store";
+import type { DailyPage } from "../domain/daily";
+import type { PeriodArchive, PeriodPage } from "../domain/period";
+import type { TransferPlan } from "../domain/transfer";
+import type { DailyMarkdown } from "../domain/transfer-markdown";
+import type { DiaryRepository } from "../domain/diary-repository";
 
-import { parseDailyTitle } from "../diary/daily";
-import { REFS_HEADING_TITLE } from "../diary/refs";
+import { parseDailyTitle } from "../domain/daily";
+import { REFS_HEADING_TITLE } from "../domain/refs";
 import {
   createTransferFallbackSection,
   createTransferSection,
-} from "../diary/transfer-markdown";
-import { planTransfers } from "../diary/transfer-plan";
-import { ContentRejectedError } from "./diary-store";
+} from "../domain/transfer-markdown";
+import { planTransfers } from "../domain/transfer";
+import { ContentRejectedError } from "../domain/diary-repository";
 import { mapSequentially } from "../shared/sequence";
 
 export interface TransferResult<K> {
@@ -26,7 +26,7 @@ const EMPTY_ARCHIVE_STATE = { transferredDates: [], hasRefs: false } as const;
 
 // 転記状態は期間ページの本文から読む。日付見出しが転記済みの日、Refs 見出しが Refs の有無を表す。
 async function readArchiveState(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   pageId: string,
 ): Promise<typeof EMPTY_ARCHIVE_STATE | { readonly transferredDates: readonly Temporal.PlainDate[]; readonly hasRefs: boolean }> {
   const sectionTitles = await diary.getSectionTitles(pageId);
@@ -41,7 +41,7 @@ async function readArchiveState(
 }
 
 function listArchives<K>(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   periodPages: readonly PeriodPage<K>[],
   createdPageIds: readonly string[],
 ): Promise<readonly PeriodArchive<K>[]> {
@@ -57,7 +57,7 @@ function listArchives<K>(
 }
 
 function readDailyMarkdowns(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   dailyPageIds: readonly string[],
 ): Promise<readonly DailyMarkdown[]> {
   return mapSequentially(dailyPageIds, async function (pageId) {
@@ -75,7 +75,7 @@ function recordTransferred<K>(
 }
 
 async function transferOne(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   plan: TransferPlan,
 ): Promise<{ readonly fellBack: boolean }> {
   const dailies = await readDailyMarkdowns(diary, plan.dailyPageIds);
@@ -100,7 +100,7 @@ async function transferOne(
 }
 
 export async function transferEndedDailies<K>(
-  diary: DiaryStore,
+  diary: DiaryRepository,
   dailies: readonly DailyPage[],
   periodPages: readonly PeriodPage<K>[],
   today: Temporal.PlainDate,
