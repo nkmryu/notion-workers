@@ -55,39 +55,33 @@ function normalizeTitle(value: string): string | null {
 }
 
 function getAttribute(tag: string, name: string): string | null {
-  const attributes = tag.matchAll(
-    /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g,
-  );
+  const match = [
+    ...tag.matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g),
+  ].find(function (candidate) {
+    return candidate[1]?.toLowerCase() === name.toLowerCase();
+  });
 
-  for (const match of attributes) {
-    if (match[1]?.toLowerCase() !== name.toLowerCase()) {
-      continue;
-    }
-
-    return match[2] ?? match[3] ?? match[4] ?? null;
-  }
-
-  return null;
+  return match?.[2] ?? match?.[3] ?? match?.[4] ?? null;
 }
 
 function extractOpenGraphTitle(html: string): string | null {
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
-    const tag = match[0];
-    const property = getAttribute(tag, "property") ?? getAttribute(tag, "name");
-
-    if (property?.toLowerCase() !== "og:title") {
-      continue;
-    }
-
-    const content = getAttribute(tag, "content");
-    const title = content === null ? null : normalizeTitle(content);
-
-    if (title !== null) {
-      return title;
-    }
-  }
-
-  return null;
+  return (
+    [...html.matchAll(/<meta\b[^>]*>/gi)]
+      .map(function ([tag]) {
+        return tag;
+      })
+      .filter(function (tag) {
+        const property = getAttribute(tag, "property") ?? getAttribute(tag, "name");
+        return property?.toLowerCase() === "og:title";
+      })
+      .map(function (tag) {
+        const content = getAttribute(tag, "content");
+        return content === null ? null : normalizeTitle(content);
+      })
+      .find(function (title) {
+        return title !== null;
+      }) ?? null
+  );
 }
 
 export function extractHtmlTitle(

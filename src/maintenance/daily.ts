@@ -2,14 +2,14 @@ import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "../diary/daily";
 import type { DiaryStore } from "./diary-store";
+import type { PageActionCounts } from "./page-actions";
 
 import { formatDailyTitle, shouldCreateTodayPage } from "../diary/daily";
-import { PAGE_ACTION_TYPE } from "../diary/page";
+import { applyPageActions, planPageAction } from "./page-actions";
+import { mapSequentially } from "../shared/sequence";
 
-export interface DailyMaintenanceResult {
+export interface DailyMaintenanceResult extends PageActionCounts {
   readonly created: number;
-  readonly renames: number;
-  readonly locks: number;
 }
 
 // Daily を最新状態にする: 今日の分が無ければ作り、今日の分のタイトルを整え、過去日をロックする。
@@ -19,29 +19,15 @@ export async function maintainDailies(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): Promise<DailyMaintenanceResult> {
-  let created = 0;
+  const creations = shouldCreateTodayPage(dailies, today) ? [formatDailyTitle(today)] : [];
+  const actions = dailies.flatMap(function (daily) {
+    return planPageAction(daily.id, daily.decideAction(today));
+  });
 
-  if (shouldCreateTodayPage(dailies, today)) {
-    await diary.createPageFromTemplate({ templateId, title: formatDailyTitle(today) });
-    created = 1;
-  }
+  await mapSequentially(creations, function (title) {
+    return diary.createPageFromTemplate({ templateId, title });
+  });
+  const counts = await applyPageActions(diary, actions);
 
-  let renames = 0;
-  let locks = 0;
-
-  for (const daily of dailies) {
-    const action = daily.decideAction(today);
-
-    if (action.type === PAGE_ACTION_TYPE.rename) {
-      await diary.renamePage(daily.id, action.title);
-      renames += 1;
-    } else if (action.type === PAGE_ACTION_TYPE.lock) {
-      await diary.lockPage(daily.id);
-      locks += 1;
-    } else {
-      continue;
-    }
-  }
-
-  return { created, renames, locks };
+  return { created: creations.length, ...counts };
 }

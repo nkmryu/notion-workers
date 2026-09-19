@@ -6,46 +6,42 @@ const FETCH_TIMEOUT_MS = 5_000;
 const MAX_HTML_BYTES = 64 * 1024;
 const USER_AGENT = "notion-workers/1.0";
 
+// 先頭 MAX_HTML_BYTES までを読む。title は文書の先頭にあるので全文は要らない。
+async function readChunks(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  chunks: readonly Uint8Array[],
+  byteLength: number,
+): Promise<readonly Uint8Array[]> {
+  const { done, value } = await reader.read();
+
+  if (done || value === undefined) {
+    return chunks;
+  }
+
+  const chunk = value.subarray(0, MAX_HTML_BYTES - byteLength);
+  const nextChunks = [...chunks, chunk];
+  const nextLength = byteLength + chunk.byteLength;
+
+  if (nextLength >= MAX_HTML_BYTES) {
+    await reader.cancel();
+    return nextChunks;
+  }
+
+  return readChunks(reader, nextChunks, nextLength);
+}
+
 async function readResponsePrefix(response: Response): Promise<string | null> {
   if (response.body === null) {
     return null;
   }
 
   const reader = response.body.getReader();
-  let chunks: readonly Uint8Array[] = [];
-  let byteLength = 0;
 
   try {
-    while (byteLength < MAX_HTML_BYTES) {
-      const result = await reader.read();
-
-      if (result.done) {
-        break;
-      }
-
-      const remaining = MAX_HTML_BYTES - byteLength;
-      const chunk = result.value.subarray(0, remaining);
-      chunks = [...chunks, chunk];
-      byteLength += chunk.byteLength;
-
-      if (byteLength >= MAX_HTML_BYTES) {
-        await reader.cancel();
-        break;
-      }
-    }
+    return new TextDecoder().decode(Buffer.concat(await readChunks(reader, [], 0)));
   } finally {
     reader.releaseLock();
   }
-
-  const bytes = new Uint8Array(byteLength);
-  let offset = 0;
-
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  return new TextDecoder().decode(bytes);
 }
 
 async function fetchRefTitle(url: string): Promise<string | null> {

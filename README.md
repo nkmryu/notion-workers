@@ -58,11 +58,15 @@ src/
   web/               外部 Web ページの実装。PageTitleSource を fetch で実装する
     page-title.ts    HTML からのタイトル抽出（og:title → <title>）
     page-title-lookup.ts   タイムアウト・64KB 制限付きの取得。失敗は null に収束
+  shared/            層に属さない小さな部品
+    sequence.ts      mapSequentially（順序依存の IO を可変変数なしに直列適用）と countBy
+    lazy.ts          初回だけ計算するメモ化。本番コードで唯一の可変変数をここに閉じる
   maintenance/       手続き。diary の判断に従って 2 つのポートを呼ぶ。notion/ と web/ には依存しない
+    page-actions.ts  リネーム / ロックの計画（データ）と適用、件数の導出
     diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
     page-title-source.ts   PageTitleSource ポート（URL → タイトル | null）
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
-    daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
+    daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）。何をするかを先にデータとして組み立て、まとめて適用する
     period.ts        期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
     transfer.ts, refs.ts
 ```

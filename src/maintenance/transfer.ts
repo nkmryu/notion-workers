@@ -14,6 +14,7 @@ import {
 } from "../diary/transfer-markdown";
 import { planTransfers } from "../diary/transfer-plan";
 import { ContentRejectedError } from "./diary-store";
+import { mapSequentially } from "../shared/sequence";
 
 export interface TransferResult<K> {
   readonly archives: readonly PeriodArchive<K>[];
@@ -39,43 +40,31 @@ async function readArchiveState(
   };
 }
 
-async function listArchives<K>(
+function listArchives<K>(
   diary: DiaryStore,
   periodPages: readonly PeriodPage<K>[],
   createdPageIds: readonly string[],
 ): Promise<readonly PeriodArchive<K>[]> {
-  let archives: readonly PeriodArchive<K>[] = [];
-
-  for (const page of periodPages) {
+  return mapSequentially(periodPages, async function (page) {
     // この実行で作った空ページと、ロック前の工程が無い期間のロック済みページは、読まなくても状態が決まる。
     const canSkipReading =
-      createdPageIds.includes(page.id) ||
-      (page.isLocked && !page.period.hasBeforeLockStep);
-    archives = [
-      ...archives,
-      page.withArchiveState(
-        canSkipReading ? EMPTY_ARCHIVE_STATE : await readArchiveState(diary, page.id),
-      ),
-    ];
-  }
+      createdPageIds.includes(page.id) || (page.isLocked && !page.period.hasBeforeLockStep);
 
-  return archives;
+    return page.withArchiveState(
+      canSkipReading ? EMPTY_ARCHIVE_STATE : await readArchiveState(diary, page.id),
+    );
+  });
 }
 
-async function readDailyMarkdowns(
+function readDailyMarkdowns(
   diary: DiaryStore,
   dailyPageIds: readonly string[],
 ): Promise<readonly DailyMarkdown[]> {
-  let dailies: readonly DailyMarkdown[] = [];
-
-  for (const pageId of dailyPageIds) {
-    dailies = [...dailies, { pageId, markdown: await diary.getPageMarkdown(pageId) }];
-  }
-
-  return dailies;
+  return mapSequentially(dailyPageIds, async function (pageId) {
+    return { pageId, markdown: await diary.getPageMarkdown(pageId) };
+  });
 }
 
-// 転記できた日はメモリ上の転記状態にも足し、同じ実行内のロック判定へ反映する。
 function recordTransferred<K>(
   archives: readonly PeriodArchive<K>[],
   plan: TransferPlan,
@@ -117,19 +106,18 @@ export async function transferEndedDailies<K>(
   today: Temporal.PlainDate,
   createdPageIds: readonly string[],
 ): Promise<TransferResult<K>> {
-  let archives = await listArchives(diary, periodPages, createdPageIds);
+  const archives = await listArchives(diary, periodPages, createdPageIds);
   const plans = planTransfers(dailies, archives, today);
-  let fallbackDates: readonly string[] = [];
+  const outcomes = await mapSequentially(plans, function (plan) {
+    return transferOne(diary, plan);
+  });
 
-  for (const plan of plans) {
-    const { fellBack } = await transferOne(diary, plan);
-
-    if (fellBack) {
-      fallbackDates = [...fallbackDates, plan.title];
-    }
-
-    archives = recordTransferred(archives, plan);
-  }
-
-  return { archives, daysTransferred: plans.length, fallbackDates };
+  return {
+    // 転記した日は（案内文へ切り替えた日も含め）見出しが立つので、同じ実行内のロック判定へ反映する。
+    archives: plans.reduce(recordTransferred, archives),
+    daysTransferred: plans.length,
+    fallbackDates: plans.flatMap(function (plan, index) {
+      return outcomes[index]?.fellBack ? [plan.title] : [];
+    }),
+  };
 }

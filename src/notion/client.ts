@@ -12,6 +12,8 @@ import {
 import { JST_TIME_ZONE } from "../diary/jst";
 import { extractSectionTitles } from "../diary/markdown-section";
 import { isNotionValidationError } from "./error";
+import { lazy } from "../shared/lazy";
+import { mapSequentially } from "../shared/sequence";
 import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";
 import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
 import { monthly } from "../diary/monthly";
@@ -35,22 +37,16 @@ export function createNotionDiaryStore(
   client: Client,
   dataSourceId: string,
 ): DiaryStore {
-  let titleKeyPromise: Promise<string> | null = null;
-
   // タイトルプロパティ名は data source ごとに固定なので、1 実行で 1 回だけ取得する。
-  function getTitleKey(): Promise<string> {
-    titleKeyPromise ??= client.dataSources
-      .retrieve({ data_source_id: dataSourceId })
-      .then(function (dataSource) {
-        if (!isFullDataSource(dataSource)) {
-          throw new Error("data source の詳細を取得できません");
-        }
+  const getTitleKey = lazy(async function () {
+    const dataSource = await client.dataSources.retrieve({ data_source_id: dataSourceId });
 
-        return parseDataSourceTitleKey(dataSource);
-      });
+    if (!isFullDataSource(dataSource)) {
+      throw new Error("data source の詳細を取得できません");
+    }
 
-    return titleKeyPromise;
-  }
+    return parseDataSourceTitleKey(dataSource);
+  });
 
   // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
   function listRowsOfType(selectName: string) {
@@ -142,18 +138,23 @@ export function createNotionDiaryStore(
     async getPageMarkdown(pageId) {
       const response = await client.pages.retrieveMarkdown({ page_id: pageId });
       await sleep(READ_INTERVAL_MS);
-      let blockUrls: ReadonlyMap<string, string> = new Map();
+      const blockUrls = await mapSequentially(
+        extractBlockLinkIds(response.markdown),
+        async function (blockId): Promise<readonly [string, string | null]> {
+          const url = await getBlockUrl(blockId);
+          await sleep(READ_INTERVAL_MS);
+          return [blockId, url];
+        },
+      );
 
-      for (const blockId of extractBlockLinkIds(response.markdown)) {
-        const url = await getBlockUrl(blockId);
-        await sleep(READ_INTERVAL_MS);
-
-        if (url !== null) {
-          blockUrls = new Map([...blockUrls, [blockId, url]]);
-        }
-      }
-
-      return restoreBlockLinks(response.markdown, blockUrls);
+      return restoreBlockLinks(
+        response.markdown,
+        new Map(
+          blockUrls.flatMap(function ([blockId, url]) {
+            return url === null ? [] : [[blockId, url] as const];
+          }),
+        ),
+      );
     },
 
     async appendMarkdown(pageId, content) {
