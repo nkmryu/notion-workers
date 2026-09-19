@@ -4,7 +4,7 @@ import type { DailyPage } from "../diary/page";
 import type { DiaryStore } from "./diary-store";
 
 import { PAGE_ACTION_TYPE, decideDailyPageAction, shouldCreateTodayPage } from "../diary/daily";
-import { formatDailyTitle } from "../diary/daily-title";
+import { formatDailyTitle } from "../diary/daily";
 
 export interface DailyMaintenanceResult {
   readonly created: number;

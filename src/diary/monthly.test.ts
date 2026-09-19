@@ -1,11 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import {
-  formatCalendarMonthTitle,
-  parseCalendarMonthTitle,
-} from "./calendar-month";
-import { monthly } from "./monthly";
+import { monthly, formatCalendarMonthTitle, parseCalendarMonthTitle } from "./monthly";
 import { resolvePeriodKey } from "./period";
 
 describe("月次タイトル", () => {

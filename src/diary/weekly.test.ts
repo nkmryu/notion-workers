@@ -1,7 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import { formatIsoWeekTitle, isoWeekOf } from "./iso-week";
+import { formatIsoWeekTitle, isoWeekOf } from "./weekly";
 
 describe("isoWeekOf", () => {
   it.each([

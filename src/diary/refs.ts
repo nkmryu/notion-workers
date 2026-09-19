@@ -126,7 +126,7 @@ export function shouldGenerateRefs(
     return false;
   }
 
-  const isPastMonth = monthly.compare(archive.key, monthly.keyOf(today)) === -1;
+  const isPastMonth = monthly.compare(archive.key, monthly.keyOf(today)) < 0;
 
   return isPastMonth && (archive.isLocked || isFullyTransferred(monthly, archive, dailies, today));
 }

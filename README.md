@@ -46,15 +46,15 @@ src/
     pacing.ts, error.ts
   diary/             日誌の規則。API に依存しない純粋関数だけを置く
     page.ts          DailyPage / WeeklyPage / MonthlyPage と、転記状態付きの PeriodArchive
-    daily.ts         今日の Daily の作成判定とリネーム・ロックの決定
+    daily.ts         Daily の規則（タイトルの読み書き・日付の解決・作成判定・リネーム・ロック）
     period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
-    weekly.ts, monthly.ts   period.ts へ渡す ISO 週・暦月の定義
+    weekly.ts, monthly.ts   ISO 週 / 暦月のタイトル規則と、period.ts へ渡す定義
     transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
     transfer-markdown.ts    転記セクションの Markdown 組み立て
     refs.ts          Refs の収集とセクション組み立て
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
-    jst.ts, daily-title.ts, iso-week.ts, calendar-month.ts   JST の暦日（Temporal.PlainDate）・ISO 週・タイトルの規則
+    jst.ts           JST の暦日（Temporal.PlainDate）への変換
   maintenance/       手続き。diary の判断に従って DiaryStore を呼ぶ。notion/ には依存しない
     diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
@@ -67,7 +67,7 @@ Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定�
 
 ## セットアップ
 
-Node.js を用意し、依存パッケージをインストールします。
+Node.js 24（`.node-version`）を用意し、依存パッケージをインストールします。
 
 ```sh
 npm install

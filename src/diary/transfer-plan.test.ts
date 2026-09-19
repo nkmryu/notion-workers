@@ -1,10 +1,10 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import type { IsoWeek } from "./iso-week";
+import type { IsoWeek } from "./weekly";
 import type { DailyPage, PeriodArchive } from "./page";
 
-import { parseDailyTitle } from "./daily-title";
+import { parseDailyTitle } from "./daily";
 import { monthly } from "./monthly";
 import { planTransfers } from "./transfer-plan";
 import { weekly } from "./weekly";

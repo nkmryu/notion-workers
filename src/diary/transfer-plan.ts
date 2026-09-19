@@ -3,7 +3,7 @@ import type { PeriodDefinition } from "./period";
 
 import { Temporal } from "temporal-polyfill";
 
-import { formatDailyTitle } from "./daily-title";
+import { formatDailyTitle } from "./daily";
 import { isTransferred } from "./period";
 
 export interface TransferPlan {

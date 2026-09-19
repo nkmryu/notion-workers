@@ -9,7 +9,7 @@ import type { PeriodDefinition } from "../diary/period";
 
 import { isFullPage } from "@notionhq/client";
 
-import { resolveDailyDate } from "../diary/daily-title";
+import { resolveDailyDate } from "../diary/daily";
 import { PERIOD_TYPE } from "../diary/page";
 import { resolvePeriodKey } from "../diary/period";
 

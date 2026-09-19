@@ -12,6 +12,7 @@ export interface PeriodDefinition<K> {
   // ロック前に行う工程（Monthly の Refs）を持つか。持つ期間は、工程を飛ばしてロックされたページを補完するため、ロック済みでも状態を読む。
   readonly hasBeforeLockStep: boolean;
   readonly keyOf: (date: Temporal.PlainDate) => K;
+  // 符号だけを見る（負: left が前、0: 同じ、正: left が後）。
   readonly compare: (left: K, right: K) => number;
   readonly formatTitle: (key: K) => string;
   readonly parseTitle: (title: string, referenceYear: number) => K | null;
@@ -21,6 +22,22 @@ export interface PeriodDefinition<K> {
 export interface PeriodCreationPlan<K> {
   readonly key: K;
   readonly title: string;
+}
+
+// 期間タイトルの "26" のような 2 桁年を、基準年に最も近い 4 桁年へ解決する。
+export function resolveShortYear(shortYear: number, referenceYear: number): number {
+  const century = Math.floor(referenceYear / 100) * 100;
+  const candidates = [
+    century - 100 + shortYear,
+    century + shortYear,
+    century + 100 + shortYear,
+  ];
+
+  return candidates.reduce(function (closest, candidate) {
+    const closestDistance = Math.abs(closest - referenceYear);
+    const candidateDistance = Math.abs(candidate - referenceYear);
+    return candidateDistance < closestDistance ? candidate : closest;
+  });
 }
 
 // 期間ページの期間は、タイトルが読めればタイトルから、読めなければ（テンプレート適用中など）作成日から決める。
@@ -52,7 +69,7 @@ export function isFullyTransferred<K>(
   dailies: readonly Pick<DailyPage, "date">[],
   today: Temporal.PlainDate,
 ): boolean {
-  if (period.compare(archive.key, period.keyOf(today)) !== -1) {
+  if (period.compare(archive.key, period.keyOf(today)) >= 0) {
     return false;
   }
 
@@ -72,7 +89,7 @@ export function decidePeriodPageAction<K>(
   dailies: readonly Pick<DailyPage, "date">[],
   today: Temporal.PlainDate,
 ): PageAction {
-  if (period.compare(archive.key, period.keyOf(today)) === 1) {
+  if (period.compare(archive.key, period.keyOf(today)) > 0) {
     return { type: PAGE_ACTION_TYPE.none };
   }
 
@@ -108,7 +125,7 @@ export function planMissingPeriodPages<K>(
       });
 
       // 期間ページは期間が終わってから作成・転記・ロックを一度に行うアーカイブなので、進行中の期間には作らない。
-      if (planned || exists || period.compare(key, currentKey) !== -1) {
+      if (planned || exists || period.compare(key, currentKey) >= 0) {
         return plans;
       }
 

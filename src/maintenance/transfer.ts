@@ -6,7 +6,7 @@ import type { TransferPlan } from "../diary/transfer-plan";
 import type { DailyMarkdown } from "../diary/transfer-markdown";
 import type { DiaryStore } from "./diary-store";
 
-import { parseDailyTitle } from "../diary/daily-title";
+import { parseDailyTitle } from "../diary/daily";
 import { REFS_HEADING_TITLE } from "../diary/refs";
 import {
   createTransferFallbackSection,

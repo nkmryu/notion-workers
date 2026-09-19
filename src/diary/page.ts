@@ -1,6 +1,6 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { IsoWeek } from "./iso-week";
+import type { IsoWeek } from "./weekly";
 
 // 状態・種別は snake_case の文字列で表し、本番コードではこの定数を参照する。
 export const PERIOD_TYPE = {
