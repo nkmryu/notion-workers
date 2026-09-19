@@ -55,6 +55,7 @@ src/
     refs.ts          Refs の収集（本文のリンクのうち内部リンクを除く）・タイトルの優先順位・セクション組み立て・生成判定
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧、作成、リネーム、ロック、本文の読み書き）と ContentRejectedError
+    testing.ts              ドメインのテスト用。エンティティの生成規則を通す工場関数
   application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
     run-maintenance.ts      1 実行の流れ（Daily → Weekly → Monthly）
     maintain-dailies.ts     Daily を最新状態にする（今日を作成 → 過去日をロック）
@@ -62,6 +63,7 @@ src/
     transfer-dailies.ts     終了した Daily の転記
     generate-refs.ts        Monthly の Refs 生成。run-maintenance が準備と確定の間に挟む
     page-actions.ts         リネーム / ロックの計画（データ）と適用、件数の導出
+    testing.ts              ユースケースのテスト用。呼び出しを記録するインメモリのリポジトリ
     web-page-title-lookup.ts   WebPageTitleLookup ポート（URL → リンク先ページのタイトル | null）
   infrastructure/    外部システムの実装
     notion/
@@ -122,6 +124,8 @@ npm run maintain
 npm run typecheck
 npm test
 ```
+
+ドメインのテストは不変条件（転記が揃うまでロックしない、Refs は一度だけ、など）を直接検証します。`application/run-maintenance.test.ts` はインメモリのリポジトリで、月初・週初の実行が「作成 → 転記 → Refs → リネーム → ロック」の順に 1 回の実行で進むこと、Refs の追記に失敗したらロックしないことを呼び出し順で検証します。
 
 実行結果は GitHub Actions の各 run のログで確認します。処理の末尾に作成・転記・リネーム・ロックの件数を 1 行で出力します。
 

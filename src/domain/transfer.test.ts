@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { PeriodArchive } from "./period";
 import type { IsoWeek } from "./weekly";
 
-import { DailyPage } from "./daily";
+import { DailyPage, formatDailyTitle } from "./daily";
 import { monthly } from "./monthly";
 import { archiveOf } from "./testing";
 import { planTransfers } from "./transfer";
@@ -33,7 +33,6 @@ describe("Weekly への転記計画", () => {
     // 日付見出しが存在すれば同じ日の全Dailyを重複転記しないことを保証する。
     expect(
       planTransfers(
-
         [daily("daily-20", "26.07.20（月）")],
         [weeklyPage(30, [Temporal.PlainDate.from("2026-07-20")])],
         today,
@@ -53,7 +52,6 @@ describe("Weekly への転記計画", () => {
     // 閉じた週次ページを更新対象にしないことを保証する。
     expect(
       planTransfers(
-
         [daily("daily-13", "26.07.13（月）")],
         [weeklyPage(29, [], true)],
         today,
@@ -65,7 +63,6 @@ describe("Weekly への転記計画", () => {
     // 作成日が過去でも終了していない当日の本文を転記しないことを保証する。
     expect(
       planTransfers(
-
         [
           daily(
             "daily-today",
@@ -83,7 +80,6 @@ describe("Weekly への転記計画", () => {
     // 作成日の前後関係に依存せず日付見出しを暦日順で追記することを保証する。
     expect(
       planTransfers(
-
         [
           daily(
             "daily-21",
@@ -119,7 +115,6 @@ describe("Weekly への転記計画", () => {
     // 同じ日付の全ページ本文を1つの冪等単位として順序どおり転記することを保証する。
     expect(
       planTransfers(
-
         [
           daily(
             "daily-later",
@@ -148,13 +143,11 @@ describe("Weekly への転記計画", () => {
   it("対象が7日あればすべてを日付昇順で返す", () => {
     // 1回の実行で保留分を残さず、古い日から順に転記を計画することを保証する。
     const dailies = [12, 11, 10, 9, 8, 7, 6].map(function (day) {
-      const paddedDay = day.toString().padStart(2, "0");
-      return daily(`daily-${day}`, `26.07.${paddedDay}（月）`);
+      return daily(`daily-${day}`, formatDailyTitle(Temporal.PlainDate.from({ year: 2026, month: 7, day })));
     });
 
     expect(
       planTransfers(
-
         dailies,
         [weeklyPage(28)],
         Temporal.PlainDate.from("2026-07-13"),
