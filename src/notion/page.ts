@@ -15,12 +15,6 @@ const PERIOD_TYPE_BY_SELECT_NAME: Readonly<Record<string, PeriodType>> = {
   Monthly: "monthly",
 };
 
-export interface QueryPage {
-  readonly pages: readonly DiaryPage[];
-  readonly hasMore: boolean;
-  readonly nextCursor: string | null;
-}
-
 type PageProperties = PageObjectResponse["properties"];
 type DataSourceProperties = DataSourceObjectResponse["properties"];
 
@@ -82,22 +76,12 @@ export function parseDataSourceTitleKey(
   return findTitlePropertyKey(dataSource.properties, "data source");
 }
 
-export function parseQueryPage(response: QueryDataSourceResponse): QueryPage {
-  if (response.has_more && response.next_cursor === null) {
-    throw new Error("has_more が true ですが next_cursor がありません");
+export function parseDiaryPage(
+  row: QueryDataSourceResponse["results"][number],
+): DiaryPage {
+  if (!isFullPage(row)) {
+    throw new Error(`query 結果にページ以外が含まれています: ${row.id}`);
   }
 
-  const pages = response.results.map(function (result) {
-    if (!isFullPage(result)) {
-      throw new Error(`query 結果にページ以外が含まれています: ${result.id}`);
-    }
-
-    return parsePage(result);
-  });
-
-  return {
-    pages,
-    hasMore: response.has_more,
-    nextCursor: response.next_cursor,
-  };
+  return parsePage(row);
 }

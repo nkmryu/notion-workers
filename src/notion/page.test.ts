@@ -1,12 +1,11 @@
 import type {
   DataSourceObjectResponse,
   PageObjectResponse,
-  QueryDataSourceResponse,
 } from "@notionhq/client";
 
 import { describe, expect, it } from "vitest";
 
-import { parseDataSourceTitleKey, parseQueryPage } from "./page";
+import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
 
 // SDK のレスポンス型は全フィールド必須なので、テストで検証する項目だけを持つ最小フィクスチャを型へ合わせる。
 function createPage(
@@ -23,19 +22,6 @@ function createPage(
     properties,
     ...overrides,
   } as unknown as PageObjectResponse;
-}
-
-function createQueryResponse(
-  pages: readonly PageObjectResponse[],
-): QueryDataSourceResponse {
-  return {
-    object: "list",
-    type: "page_or_data_source",
-    page_or_data_source: {},
-    results: [...pages],
-    has_more: false,
-    next_cursor: null,
-  } as unknown as QueryDataSourceResponse;
 }
 
 function createDataSource(
@@ -69,39 +55,34 @@ describe("parseDataSourceTitleKey", () => {
   });
 });
 
-describe("parseQueryPage", () => {
+describe("parseDiaryPage", () => {
   it("type select が Weekly のページを週次として解析する", () => {
     // 名前と値が一致する select プロパティから週次ページを識別することを保証する。
     expect(
-      parseQueryPage(
-        createQueryResponse([
+      parseDiaryPage(
           createPage({
             Name: { type: "title", title: [{ plain_text: "26.W30" }] },
             type: { type: "select", select: { name: "Weekly" } },
           }),
-        ]),
-      ).pages[0]?.periodType,
+      )?.periodType,
     ).toBe("weekly");
   });
 
   it("type select が Monthly のページを月次として解析する", () => {
     // Notionの実表記Monthlyと厳密一致したページだけを月次として識別することを保証する。
-    const page = parseQueryPage(
-      createQueryResponse([
+    const page = parseDiaryPage(
         createPage({
           Name: { type: "title", title: [{ plain_text: "26.M07" }] },
           type: { type: "select", select: { name: "Monthly" } },
         }),
-      ]),
-    ).pages[0];
+    );
 
     expect(page?.periodType).toBe("monthly");
   });
 
   it("タイトル・作成日時・ロック状態を取り出す", () => {
     // 分類とアクション決定に必要な項目を SDK レスポンスから欠けなく写すことを保証する。
-    const page = parseQueryPage(
-      createQueryResponse([
+    const page = parseDiaryPage(
         createPage(
           {
             日付: {
@@ -111,8 +92,7 @@ describe("parseQueryPage", () => {
           },
           { id: "daily", is_locked: true },
         ),
-      ]),
-    ).pages[0];
+    );
 
     expect(page).toEqual({
       id: "daily",
@@ -137,21 +117,17 @@ describe("parseQueryPage", () => {
       ...(typeProperty === undefined ? {} : { type: typeProperty }),
     };
 
-    const page = parseQueryPage(createQueryResponse([createPage(properties)]))
-      .pages[0];
+    const page = parseDiaryPage(createPage(properties));
 
     expect(page?.periodType).toBeNull();
   });
 
-  it("結果にページ詳細以外が混ざると失敗する", () => {
+  it("ページ詳細以外の行は失敗する", () => {
     // 部分レスポンスを空タイトルの Daily 候補として誤処理しないことを保証する。
-    const response = {
-      ...createQueryResponse([]),
-      results: [{ object: "page", id: "partial" }],
-    } as unknown as QueryDataSourceResponse;
+    const row = { object: "page", id: "partial" } as unknown as PageObjectResponse;
 
     expect(function () {
-      parseQueryPage(response);
+      parseDiaryPage(row);
     }).toThrow("query 結果にページ以外が含まれています: partial");
   });
 });

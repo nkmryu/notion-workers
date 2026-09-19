@@ -2,9 +2,13 @@ import type { Client } from "@notionhq/client";
 
 import type { DiaryPage } from "../diary/page";
 
-import { isFullBlock, isFullDataSource } from "@notionhq/client";
+import {
+  collectAllDataSourceRows,
+  isFullBlock,
+  isFullDataSource,
+} from "@notionhq/client";
 
-import { parseDataSourceTitleKey, parseQueryPage } from "./page";
+import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
 
 // メンテナンス処理が日誌データベースに対して必要とする操作。SDK の Client はこの背後に閉じ込める。
 export interface NotionDiary {
@@ -38,21 +42,13 @@ export function createNotionDiary(
 ): NotionDiary {
   return {
     async listPages() {
-      let pageChunks: readonly (readonly DiaryPage[])[] = [];
-      let cursor: string | null = null;
+      // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
+      const rows = await collectAllDataSourceRows(client, {
+        data_source_id: dataSourceId,
+        result_type: "page",
+      });
 
-      do {
-        const response = await client.dataSources.query({
-          data_source_id: dataSourceId,
-          result_type: "page",
-          ...(cursor === null ? {} : { start_cursor: cursor }),
-        });
-        const queryPage = parseQueryPage(response);
-        pageChunks = [...pageChunks, queryPage.pages];
-        cursor = queryPage.hasMore ? queryPage.nextCursor : null;
-      } while (cursor !== null);
-
-      return pageChunks.flat();
+      return rows.map(parseDiaryPage);
     },
 
     async getTitleKey() {
@@ -112,14 +108,17 @@ export function createNotionDiary(
         return null;
       }
 
-      // bookmark・embed・link_preview は共通して { url } を持つ。それ以外の型は補完対象にしない。
-      const data: unknown = block[block.type as keyof typeof block];
-      const url =
-        typeof data === "object" && data !== null && "url" in data
-          ? data.url
-          : null;
-
-      return typeof url === "string" && url !== "" ? url : null;
+      // 外部 URL を持つのはこの 3 種。それ以外の型は補完対象にしない。
+      switch (block.type) {
+        case "bookmark":
+          return block.bookmark.url || null;
+        case "embed":
+          return block.embed.url || null;
+        case "link_preview":
+          return block.link_preview.url || null;
+        default:
+          return null;
+      }
     },
   };
 }
