@@ -1,7 +1,6 @@
 import type { Client } from "@notionhq/client";
 
 import type { NotionPage } from "./notion-response";
-import type { WeeklyPageForCreation } from "./weekly-page";
 
 import { formatDailyTitle } from "./date";
 import {
@@ -45,19 +44,9 @@ export async function createMissingPages(
   input: CreateMissingPagesInput,
 ): Promise<CreatedPagesResult> {
   const shouldCreateDaily = shouldCreateTodayPage(input.pages, input.now);
-  const pagesForPlans: readonly WeeklyPageForCreation[] = shouldCreateDaily
-    ? [
-        ...input.pages,
-        {
-          createdTime: input.now.toISOString(),
-          currentTitle: formatDailyTitle(input.now),
-          isWeekly: false,
-          isMonthly: false,
-        },
-      ]
-    : input.pages;
-  const weeklyPlans = planMissingWeeklyPages(pagesForPlans, input.now);
-  const monthlyPlans = planMissingMonthlyPages(pagesForPlans, input.now);
+  // 今日の Daily は進行中の週・月に属し、Weekly / Monthly は期間終了後にしか作らないため、作成計画には影響しない。
+  const weeklyPlans = planMissingWeeklyPages(input.pages, input.now);
+  const monthlyPlans = planMissingMonthlyPages(input.pages, input.now);
 
   if (
     shouldCreateDaily === false &&

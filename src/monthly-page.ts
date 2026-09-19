@@ -176,6 +176,7 @@ export function planMissingMonthlyPages(
   pages: readonly MonthlyPageForCreation[],
   now: Date,
 ): readonly MonthlyCreationPlan[] {
+  const currentMonth = createMonthlyPageActionContext(now).currentMonth;
   const dailyMonths = pages
     .reduce<readonly MonthlyCreationPlan[]>(function (plans, page) {
       const classification = classifyPage(page, now);
@@ -185,12 +186,12 @@ export function planMissingMonthlyPages(
       }
 
       const month = getDateKeyCalendarMonth(classification.dateKey);
+      const exists = plans.some(function (plan) {
+        return sameMonth(plan.month, month);
+      });
 
-      if (
-        plans.some(function (plan) {
-          return sameMonth(plan.month, month);
-        })
-      ) {
+      // Monthly は月が終わってから作成・転記・Refs・ロックを一度に行うアーカイブなので、進行中の月には作らない。
+      if (exists || compareCalendarMonths(month, currentMonth) !== -1) {
         return plans;
       }
 

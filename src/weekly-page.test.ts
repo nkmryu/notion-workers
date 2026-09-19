@@ -166,6 +166,58 @@ describe("planMissingWeeklyPages", () => {
     ).toEqual([]);
   });
 
+  it("進行中の週は daily があっても作成対象にしない", () => {
+    // Weekly を週の終了後にまとめて作成・転記・ロックする前提で、今週のページを先に作らないことを保証する。
+    // now は 2026-07-22（水）= 26.W30。
+    expect(
+      planMissingWeeklyPages(
+        [
+          {
+            createdTime: "2026-07-20T03:00:00.000Z",
+            isWeekly: false,
+            currentTitle: "26.07.20（月）",
+          },
+          {
+            createdTime: "2026-07-22T03:00:00.000Z",
+            isWeekly: false,
+            currentTitle: "26.07.22（水）",
+          },
+          {
+            createdTime: "2026-07-19T03:00:00.000Z",
+            isWeekly: false,
+            currentTitle: "26.07.19（日）",
+          },
+        ],
+        now,
+      ).map(function (plan) {
+        return plan.title;
+      }),
+    ).toEqual(["26.W29"]);
+  });
+
+  it("週が変わった初日に前週を作成対象にする", () => {
+    // 新しい週の 0:05 の実行で前週分が作られ、同じ実行で転記とロックまで進めることを保証する。
+    expect(
+      planMissingWeeklyPages(
+        [
+          {
+            createdTime: "2026-07-26T03:00:00.000Z",
+            isWeekly: false,
+            currentTitle: "26.07.26（日）",
+          },
+          {
+            createdTime: "2026-07-27T03:00:00.000Z",
+            isWeekly: false,
+            currentTitle: "26.07.27（月）",
+          },
+        ],
+        new Date("2026-07-26T15:05:00.000Z"),
+      ).map(function (plan) {
+        return plan.title;
+      }),
+    ).toEqual(["26.W30"]);
+  });
+
   it("daily が存在しない週は作成対象にしない", () => {
     // weekly だけがあるデータから別週のページを推測して作らないことを保証する。
     expect(

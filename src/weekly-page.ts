@@ -155,6 +155,7 @@ export function planMissingWeeklyPages(
   pages: readonly WeeklyPageForCreation[],
   now: Date,
 ): readonly WeeklyCreationPlan[] {
+  const currentWeek = getJstIsoWeek(now);
   const dailyWeeks = pages
     .reduce<readonly WeeklyCreationPlan[]>(function (plans, page) {
       const classification = classifyPage(page, now);
@@ -169,7 +170,8 @@ export function planMissingWeeklyPages(
         return sameIsoWeek(plan.week, week);
       });
 
-      if (exists) {
+      // Weekly は週が終わってから作成・転記・ロックを一度に行うアーカイブなので、進行中の週には作らない。
+      if (exists || compareIsoWeeks(week, currentWeek) !== -1) {
         return plans;
       }
 

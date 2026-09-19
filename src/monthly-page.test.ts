@@ -93,6 +93,43 @@ describe("planMissingMonthlyPages", () => {
     ).toEqual(["26.M01", "26.M02"]);
   });
 
+  it("進行中の月はDailyがあっても作成しない", () => {
+    // Monthly を月の終了後にまとめて作成・転記・Refs・ロックする前提で、今月のページを先に作らないことを保証する。
+    expect(
+      planMissingMonthlyPages(
+        [
+          ...pages,
+          {
+            createdTime: "2026-07-22T00:00:00.000Z",
+            currentTitle: "26.07.01（水）",
+            isWeekly: false,
+          },
+        ],
+        now,
+      ).map(function (plan) {
+        return plan.title;
+      }),
+    ).toEqual(["25.M12", "26.M01", "26.M02"]);
+  });
+
+  it("月が変わった初日に前月を作成対象にする", () => {
+    // 翌月 1 日の実行で前月分が作られることを保証する。
+    expect(
+      planMissingMonthlyPages(
+        [
+          {
+            createdTime: "2026-07-31T00:00:00.000Z",
+            currentTitle: "26.07.31（金）",
+            isWeekly: false,
+          },
+        ],
+        new Date("2026-07-31T15:05:00.000Z"),
+      ).map(function (plan) {
+        return plan.title;
+      }),
+    ).toEqual(["26.M07"]);
+  });
+
   it("Dailyがない月は作成しない", () => {
     // Monthlyだけの月から別の作成対象を推測しないことを保証する。
     expect(
