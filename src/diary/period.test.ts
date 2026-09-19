@@ -8,54 +8,44 @@ import {
 } from "./period";
 import { weekly } from "./weekly";
 
+// 2026-07-22（水）= 26.W30 / 26.M07
 const now = new Date("2026-07-22T03:00:00.000Z");
 
+function daily(dateKey: string): { readonly dateKey: string } {
+  return { dateKey };
+}
+
 describe("Weekly のアクション決定", () => {
-  it("今週作成された週次ページをリネームする", () => {
+  it("今週の週次ページをリネームする", () => {
     // 今週の週次ページに期待する週次タイトルを指定することを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        {
-          createdTime: "2026-07-20T03:00:00.000Z",
-          isLocked: false,
-          title: "新規ページ",
-          periodType: "weekly" as const,
-        },
+        { key: { year: 2026, week: 30 }, title: "新規ページ", isLocked: false },
         now,
         false,
       ),
     ).toEqual({ type: "rename", title: "26.W30" });
   });
 
-  it("今週作成されてリネーム済みの週次ページには何もしない", () => {
+  it("今週でリネーム済みの週次ページには何もしない", () => {
     // 週次ページへ不要な PATCH を重ねないことを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        {
-          createdTime: "2026-07-20T03:00:00.000Z",
-          isLocked: false,
-          title: "26.W30",
-          periodType: "weekly" as const,
-        },
+        { key: { year: 2026, week: 30 }, title: "26.W30", isLocked: false },
         now,
         false,
       ),
     ).toEqual({ type: "none" });
   });
 
-  it("先週作成された未ロックの週次ページをロックする", () => {
+  it("先週の未ロックの週次ページをロックする", () => {
     // 転記完了が確認された過去週だけをロック対象にできることを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        {
-          createdTime: "2026-07-13T03:00:00.000Z",
-          isLocked: false,
-          title: "26.W29",
-          periodType: "weekly" as const,
-        },
+        { key: { year: 2026, week: 29 }, title: "26.W29", isLocked: false },
         now,
         true,
       ),
@@ -67,48 +57,21 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        {
-          createdTime: "2026-07-13T03:00:00.000Z",
-          isLocked: false,
-          title: "26.W29",
-          periodType: "weekly" as const,
-        },
+        { key: { year: 2026, week: 29 }, title: "26.W29", isLocked: false },
         now,
         false,
       ),
     ).toEqual({ type: "none" });
   });
 
-  it("日次ページには何もしない", () => {
-    // 日次ページを週次のリネーム・ロック対象にしないことを保証する。
+  it("未来週の週次ページには何もしない", () => {
+    // 先に作られた未来週のページをリネームもロックもしないことを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        {
-          createdTime: "2026-07-13T03:00:00.000Z",
-          isLocked: false,
-          title: "26.07.13（月）",
-          periodType: null,
-        },
+        { key: { year: 2026, week: 31 }, title: "仮", isLocked: false },
         now,
-        false,
-      ),
-    ).toEqual({ type: "none" });
-  });
-
-  it("未来週に作成された週次ページには何もしない", () => {
-    // 実行時点より未来の ISO 週に属するページを変更しないことを保証する。
-    expect(
-      decidePeriodPageAction(
-        weekly,
-        {
-          createdTime: "2026-07-27T03:00:00.000Z",
-          isLocked: false,
-          title: "26.W31",
-          periodType: "weekly" as const,
-        },
-        now,
-        false,
+        true,
       ),
     ).toEqual({ type: "none" });
   });
@@ -120,61 +83,24 @@ describe("Weekly の作成計画", () => {
     expect(
       planMissingPeriodPages(
         weekly,
-        [
-          {
-            createdTime: "2026-07-13T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.13（月）",
-          },
-          {
-            createdTime: "2026-06-29T03:00:00.000Z",
-            periodType: null,
-            title: "26.06.29（月）",
-          },
-          {
-            createdTime: "2026-07-06T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.06（月）",
-          },
-        ],
+        [daily("2026-07-13"), daily("2026-06-29"), daily("2026-07-06")],
+        [],
         now,
       ),
     ).toEqual([
-      {
-        key: { year: 2026, week: 27 },
-        title: "26.W27",
-        representativeCreatedTime: "2026-06-29T00:00:00.000Z",
-      },
-      {
-        key: { year: 2026, week: 28 },
-        title: "26.W28",
-        representativeCreatedTime: "2026-07-06T00:00:00.000Z",
-      },
-      {
-        key: { year: 2026, week: 29 },
-        title: "26.W29",
-        representativeCreatedTime: "2026-07-13T00:00:00.000Z",
-      },
+      { key: { year: 2026, week: 27 }, title: "26.W27" },
+      { key: { year: 2026, week: 28 }, title: "26.W28" },
+      { key: { year: 2026, week: 29 }, title: "26.W29" },
     ]);
   });
 
   it("weekly が既にある週は作成対象から除外する", () => {
-    // タイトルが示す ISO 週に weekly があれば重複作成しないことを保証する。
+    // その ISO 週に weekly があれば重複作成しないことを保証する。
     expect(
       planMissingPeriodPages(
         weekly,
-        [
-          {
-            createdTime: "2026-07-06T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.06（月）",
-          },
-          {
-            createdTime: "2026-07-18T03:00:00.000Z",
-            periodType: "weekly" as const,
-            title: "26.W28",
-          },
-        ],
+        [daily("2026-07-06")],
+        [{ key: { year: 2026, week: 28 } }],
         now,
       ),
     ).toEqual([]);
@@ -182,27 +108,11 @@ describe("Weekly の作成計画", () => {
 
   it("進行中の週は daily があっても作成対象にしない", () => {
     // Weekly を週の終了後にまとめて作成・転記・ロックする前提で、今週のページを先に作らないことを保証する。
-    // now は 2026-07-22（水）= 26.W30。
     expect(
       planMissingPeriodPages(
         weekly,
-        [
-          {
-            createdTime: "2026-07-20T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.20（月）",
-          },
-          {
-            createdTime: "2026-07-22T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.22（水）",
-          },
-          {
-            createdTime: "2026-07-19T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.19（日）",
-          },
-        ],
+        [daily("2026-07-20"), daily("2026-07-22"), daily("2026-07-19")],
+        [],
         now,
       ).map(function (plan) {
         return plan.title;
@@ -215,107 +125,45 @@ describe("Weekly の作成計画", () => {
     expect(
       planMissingPeriodPages(
         weekly,
-        [
-          {
-            createdTime: "2026-07-26T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.26（日）",
-          },
-          {
-            createdTime: "2026-07-27T03:00:00.000Z",
-            periodType: null,
-            title: "26.07.27（月）",
-          },
-        ],
-        new Date("2026-07-26T15:05:00.000Z"),
+        [daily("2026-07-26"), daily("2026-07-27")],
+        [],
+        new Date("2026-07-26T17:00:00.000Z"),
       ).map(function (plan) {
         return plan.title;
       }),
     ).toEqual(["26.W30"]);
   });
 
+  it("同じ週の daily が複数あっても計画は 1 件にまとめる", () => {
+    // 週内の日数に関係なく週次ページを 1 つだけ作ることを保証する。
+    expect(
+      planMissingPeriodPages(
+        weekly,
+        [daily("2026-07-13"), daily("2026-07-14"), daily("2026-07-19")],
+        [],
+        now,
+      ),
+    ).toEqual([{ key: { year: 2026, week: 29 }, title: "26.W29" }]);
+  });
+
   it("daily が存在しない週は作成対象にしない", () => {
     // weekly だけがあるデータから別週のページを推測して作らないことを保証する。
     expect(
-      planMissingPeriodPages(
-        weekly,
-        [
-          {
-            createdTime: "2026-07-18T03:00:00.000Z",
-            periodType: "weekly" as const,
-            title: "26.W29",
-          },
-        ],
-        now,
-      ),
+      planMissingPeriodPages(weekly, [], [{ key: { year: 2026, week: 28 } }], now),
     ).toEqual([]);
   });
 
-  it("MonthlyをDailyとして週次作成の根拠にしない", () => {
-    // 日付風タイトルのMonthlyがWeekly作成を誘発しないことを保証する。
-    expect(
-      planMissingPeriodPages(
-        weekly,
-        [
-          {
-            createdTime: "2026-07-18T03:00:00.000Z",
-            periodType: "monthly" as const,
-            title: "26.07.13（月）",
-          },
-        ],
-        now,
-      ),
-    ).toEqual([]);
-  });
-
-  it("作成日と異なるタイトルの日のISO週へdailyを帰属させる", () => {
-    // インポート時の作成日に偏らずタイトル日が属する過去週を作成対象にすることを保証する。
-    expect(
-      planMissingPeriodPages(
-        weekly,
-        [
-          {
-            createdTime: "2026-07-22T01:00:00.000Z",
-            periodType: null,
-            title: "24.12.30（月）",
-          },
-          {
-            createdTime: "2024-12-30T01:00:00.000Z",
-            periodType: null,
-            title: "移行メモ",
-          },
-        ],
-        now,
-      ),
-    ).toEqual([
-      {
-        key: { year: 2025, week: 1 },
-        title: "25.W01",
-        representativeCreatedTime: "2024-12-30T00:00:00.000Z",
-      },
+  it("年末年始の daily を ISO 週基準年の週へ帰属させる", () => {
+    // 暦年ではなく ISO 週基準年で週次ページを作ることを保証する。
+    expect(planMissingPeriodPages(weekly, [daily("2024-12-30")], [], now)).toEqual([
+      { key: { year: 2025, week: 1 }, title: "25.W01" },
     ]);
   });
 });
 
 describe("Weekly のロック判定", () => {
-  const weeklyPage = {
-    createdTime: "2026-07-13T00:00:00.000Z",
-    isLocked: false,
-    title: "26.W29",
-    periodType: "weekly" as const,
-  };
-  const dailies = [
-    {
-      createdTime: "2026-07-13T03:00:00.000Z",
-      title: "26.07.13（月）",
-      periodType: null,
-    },
-    {
-      createdTime: "2026-07-14T03:00:00.000Z",
-      title: "26.07.14（火）",
-      periodType: null,
-    },
-  ];
+  const weeklyPage = { key: { year: 2026, week: 29 }, isLocked: false };
+  const dailies = [daily("2026-07-13"), daily("2026-07-14")];
 
   it("その週の全 daily が転記済みなら過去週をロックする", () => {
     // 過去週の全期待見出しが存在するときだけ完了と判定することを保証する。
@@ -332,9 +180,22 @@ describe("Weekly のロック判定", () => {
 
   it("未転記の daily が残る過去週をロックしない", () => {
     // 1日でも期待見出しが欠けていれば次回転記可能な状態を保つことを保証する。
+    expect(shouldLockPeriodPage(weekly, weeklyPage, dailies, ["26.07.13（月）"], now)).toBe(
+      false,
+    );
+  });
+
+  it("別の週の daily は完了条件に含めない", () => {
+    // 他の週の未転記が対象週のロックを妨げないことを保証する。
     expect(
-      shouldLockPeriodPage(weekly, weeklyPage, dailies, ["26.07.13（月）"], now),
-    ).toBe(false);
+      shouldLockPeriodPage(
+        weekly,
+        weeklyPage,
+        [...dailies, daily("2026-07-06")],
+        ["26.07.13（月）", "26.07.14（火）"],
+        now,
+      ),
+    ).toBe(true);
   });
 
   it("全 daily が転記済みでも今週はロックしない", () => {
@@ -342,122 +203,59 @@ describe("Weekly のロック判定", () => {
     expect(
       shouldLockPeriodPage(
         weekly,
-        {
-          ...weeklyPage,
-          createdTime: "2026-07-20T00:00:00.000Z",
-          title: "26.W30",
-        },
-        [
-          {
-            createdTime: "2026-07-20T03:00:00.000Z",
-            title: "26.07.20（月）",
-            periodType: null,
-          },
-        ],
+        { key: { year: 2026, week: 30 }, isLocked: false },
+        [daily("2026-07-20")],
         ["26.07.20（月）"],
         now,
       ),
     ).toBe(false);
   });
 
-  it("同じ週のロック済みメモを完了条件へ含めない", () => {
-    // メモに対応する見出しがなくても全Daily転記済みなら週次をロックできることを保証する。
+  it("ロック済みの週次ページは再ロックしない", () => {
+    // ロック済みページへ PATCH を重ねないことを保証する。
     expect(
       shouldLockPeriodPage(
         weekly,
-        weeklyPage,
-        [
-          ...dailies,
-          {
-            createdTime: "2026-07-15T03:00:00.000Z",
-            title: "週のメモ",
-            periodType: null,
-          },
-        ],
+        { ...weeklyPage, isLocked: true },
+        dailies,
         ["26.07.13（月）", "26.07.14（火）"],
         now,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
 describe("Monthly の作成計画", () => {
-  const pages = [
-    {
-      createdTime: "2026-07-22T00:00:00.000Z",
-      title: "25.12.31（水）",
-      periodType: null,
-    },
-    {
-      createdTime: "2026-07-22T00:00:00.000Z",
-      title: "26.01.01（木）",
-      periodType: null,
-    },
-    {
-      createdTime: "2026-07-22T00:00:00.000Z",
-      title: "26.02.01（日）",
-      periodType: null,
-    },
-  ];
+  const dailies = [daily("2025-12-31"), daily("2026-01-01"), daily("2026-02-01")];
 
-  it("Dailyのタイトル日が属する月を古い順にすべて返す", () => {
-    // 作成日と異なる暦月でも古い未作成月から残さず計画することを保証する。
-    expect(planMissingPeriodPages(monthly, pages, now)).toEqual([
-      {
-        key: { year: 2025, month: 12 },
-        title: "25.M12",
-        representativeCreatedTime: "2025-12-31T00:00:00.000Z",
-      },
-      {
-        key: { year: 2026, month: 1 },
-        title: "26.M01",
-        representativeCreatedTime: "2026-01-01T00:00:00.000Z",
-      },
-      {
-        key: { year: 2026, month: 2 },
-        title: "26.M02",
-        representativeCreatedTime: "2026-02-01T00:00:00.000Z",
-      },
+  it("Daily の日が属する月を古い順にすべて返す", () => {
+    // 古い未作成月から残さず計画することを保証する。
+    expect(planMissingPeriodPages(monthly, dailies, [], now)).toEqual([
+      { key: { year: 2025, month: 12 }, title: "25.M12" },
+      { key: { year: 2026, month: 1 }, title: "26.M01" },
+      { key: { year: 2026, month: 2 }, title: "26.M02" },
     ]);
   });
 
   it("既存月を除外する", () => {
-    // 既存Monthlyの月を重複作成しないことを保証する。
+    // 既存 Monthly の月を重複作成しないことを保証する。
     expect(
-      planMissingPeriodPages(
-        monthly,
-        [
-          ...pages,
-          {
-            createdTime: "2026-07-01T00:00:00.000Z",
-            title: "25.M12",
-            periodType: "monthly" as const,
-          },
-        ],
-        now,
-      ).map(function (plan) {
-        return plan.title;
-      }),
+      planMissingPeriodPages(monthly, dailies, [{ key: { year: 2025, month: 12 } }], now).map(
+        function (plan) {
+          return plan.title;
+        },
+      ),
     ).toEqual(["26.M01", "26.M02"]);
   });
 
-  it("進行中の月はDailyがあっても作成しない", () => {
+  it("進行中の月は Daily があっても作成しない", () => {
     // Monthly を月の終了後にまとめて作成・転記・Refs・ロックする前提で、今月のページを先に作らないことを保証する。
     expect(
-      planMissingPeriodPages(
-        monthly,
-        [
-          ...pages,
-          {
-            createdTime: "2026-07-22T00:00:00.000Z",
-            title: "26.07.01（水）",
-            periodType: null,
-          },
-        ],
-        now,
-      ).map(function (plan) {
-        return plan.title;
-      }),
+      planMissingPeriodPages(monthly, [...dailies, daily("2026-07-01")], [], now).map(
+        function (plan) {
+          return plan.title;
+        },
+      ),
     ).toEqual(["25.M12", "26.M01", "26.M02"]);
   });
 
@@ -466,59 +264,28 @@ describe("Monthly の作成計画", () => {
     expect(
       planMissingPeriodPages(
         monthly,
-        [
-          {
-            createdTime: "2026-07-31T00:00:00.000Z",
-            title: "26.07.31（金）",
-            periodType: null,
-          },
-        ],
-        new Date("2026-07-31T15:05:00.000Z"),
+        [daily("2026-07-31")],
+        [],
+        new Date("2026-07-31T17:00:00.000Z"),
       ).map(function (plan) {
         return plan.title;
       }),
     ).toEqual(["26.M07"]);
   });
 
-  it("Dailyがない月は作成しない", () => {
-    // Monthlyだけの月から別の作成対象を推測しないことを保証する。
+  it("Daily がない月は作成しない", () => {
+    // Monthly だけの月から別の作成対象を推測しないことを保証する。
     expect(
-      planMissingPeriodPages(
-        monthly,
-        [
-          {
-            createdTime: "2026-07-01T00:00:00.000Z",
-            title: "26.M07",
-            periodType: "monthly" as const,
-          },
-        ],
-        now,
-      ),
+      planMissingPeriodPages(monthly, [], [{ key: { year: 2026, month: 7 } }], now),
     ).toEqual([]);
   });
 });
 
 describe("Monthly のアクション決定とロック判定", () => {
-  const monthlyPage = {
-    createdTime: "2026-06-01T00:00:00.000Z",
-    title: "26.M06",
-    periodType: "monthly" as const,
-    isLocked: false,
-  };
-  const dailies = [
-    {
-      createdTime: "2026-07-22T00:00:00.000Z",
-      title: "26.06.01（月）",
-      periodType: null,
-    },
-    {
-      createdTime: "2026-07-22T00:00:00.000Z",
-      title: "26.06.02（火）",
-      periodType: null,
-    },
-  ];
+  const monthlyPage = { key: { year: 2026, month: 6 }, title: "26.M06", isLocked: false };
+  const dailies = [daily("2026-06-01"), daily("2026-06-02")];
 
-  it("全Daily見出しが揃った過去月をロックする", () => {
+  it("全 Daily 見出しが揃った過去月をロックする", () => {
     // 終了月の全日が転記済みの場合だけロック可能になることを保証する。
     expect(
       shouldLockPeriodPage(
@@ -529,41 +296,29 @@ describe("Monthly のアクション決定とロック判定", () => {
         now,
       ),
     ).toBe(true);
-    expect(decidePeriodPageAction(monthly, monthlyPage, now, true)).toEqual({
-      type: "lock",
-    });
+    expect(decidePeriodPageAction(monthly, monthlyPage, now, true)).toEqual({ type: "lock" });
   });
 
-  it("未転記Dailyがある過去月をロックしない", () => {
+  it("未転記 Daily がある過去月をロックしない", () => {
     // 期待見出しが欠ける月を次回転記可能な状態に保つことを保証する。
-    expect(
-      shouldLockPeriodPage(monthly, monthlyPage, dailies, ["26.06.01（月）"], now),
-    ).toBe(false);
+    expect(shouldLockPeriodPage(monthly, monthlyPage, dailies, ["26.06.01（月）"], now)).toBe(
+      false,
+    );
   });
 
   it("今月は全見出しが揃ってもロックしない", () => {
     // 進行中の暦月を完了扱いしないことを保証する。
     expect(
-      shouldLockPeriodPage(
-        monthly,
-        { ...monthlyPage, title: "26.M07" },
-        [],
-        [],
-        now,
-      ),
+      shouldLockPeriodPage(monthly, { key: { year: 2026, month: 7 }, isLocked: false }, [], [], now),
     ).toBe(false);
   });
 
-  it("今月のMonthlyを期待タイトルへリネームする", () => {
+  it("今月の Monthly を期待タイトルへリネームする", () => {
     // テンプレートが上書きした月次タイトルを同じ実行で収束させることを保証する。
     expect(
       decidePeriodPageAction(
         monthly,
-        {
-          ...monthlyPage,
-          title: "テンプレート",
-          createdTime: "2026-07-01T00:00:00.000Z",
-        },
+        { key: { year: 2026, month: 7 }, title: "テンプレート", isLocked: false },
         now,
         false,
       ),

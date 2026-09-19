@@ -1,10 +1,9 @@
-import type { DiaryPage } from "../diary/page";
+import type { DailyPage, PeriodPage } from "../diary/page";
 import type { PeriodDefinition } from "../diary/period";
 import type { TransferDestination, TransferPlan } from "../diary/transfer-plan";
 import type { DailyMarkdown } from "../diary/transfer-markdown";
 import type { NotionDiary } from "../notion/client";
 
-import { getPeriodPageKey } from "../diary/period";
 import { extractSectionTitles } from "../diary/markdown-section";
 import {
   createTransferFallbackSection,
@@ -34,28 +33,20 @@ async function readHeadingTitles(
 async function listDestinations<K>(
   diary: NotionDiary,
   period: PeriodDefinition<K>,
-  pages: readonly DiaryPage[],
+  periodPages: readonly PeriodPage<K>[],
   knownEmptyPageIds: readonly string[],
 ): Promise<readonly TransferDestination<K>[]> {
   let destinations: readonly TransferDestination<K>[] = [];
 
-  for (const page of pages) {
-    if (page.periodType !== period.type) {
-      continue;
-    }
-
+  for (const page of periodPages) {
     const canSkipReading =
       knownEmptyPageIds.includes(page.id) ||
       (page.isLocked && !period.finalizesAfterLock);
     destinations = [
       ...destinations,
       {
-        id: page.id,
-        key: getPeriodPageKey(period, page),
-        isLocked: page.isLocked,
-        headingTitles: canSkipReading
-          ? []
-          : await readHeadingTitles(diary, page.id),
+        ...page,
+        headingTitles: canSkipReading ? [] : await readHeadingTitles(diary, page.id),
       },
     ];
   }
@@ -125,12 +116,13 @@ async function transferOne(
 export async function transferEndedDailies<K>(
   diary: NotionDiary,
   period: PeriodDefinition<K>,
-  pages: readonly DiaryPage[],
+  dailies: readonly DailyPage[],
+  periodPages: readonly PeriodPage<K>[],
   now: Date,
   knownEmptyPageIds: readonly string[],
 ): Promise<TransferResult<K>> {
-  let destinations = await listDestinations(diary, period, pages, knownEmptyPageIds);
-  const plans = planTransfers(period, pages, destinations, now);
+  let destinations = await listDestinations(diary, period, periodPages, knownEmptyPageIds);
+  const plans = planTransfers(period, dailies, destinations, now);
   let fallbackDates: readonly string[] = [];
 
   for (const plan of plans) {

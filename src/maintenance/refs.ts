@@ -1,12 +1,11 @@
-import type { DiaryPage } from "../diary/page";
+import type { MonthlyPage } from "../diary/page";
 import type { TransferDestination } from "../diary/transfer-plan";
 import type { NotionDiary } from "../notion/client";
 import type { RefTitleResolutionCounts } from "./ref-title-lookup";
 
-import { monthly } from "../diary/monthly";
-import { getPeriodPageKey } from "../diary/period";
-import { buildRefsSection, collectRefs, shouldGenerateRefs } from "../diary/refs";
 import { extractSectionTitles } from "../diary/markdown-section";
+import { monthly } from "../diary/monthly";
+import { buildRefsSection, collectRefs, shouldGenerateRefs } from "../diary/refs";
 import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { restoreExternalLinks } from "./external-links";
 import { lookupRefTitles } from "./ref-title-lookup";
@@ -29,30 +28,16 @@ function addCounts(
 }
 
 function listCandidates(
-  pages: readonly DiaryPage[],
-  destinations: readonly TransferDestination<unknown>[],
+  destinations: readonly TransferDestination<MonthlyPage["key"]>[],
   lockPlannedPageIds: readonly string[],
   now: Date,
-): readonly DiaryPage[] {
-  return pages
+): readonly MonthlyPage[] {
+  return destinations
     .filter(function (page) {
-      const headingTitles =
-        destinations.find(function (destination) {
-          return destination.id === page.id;
-        })?.headingTitles ?? [];
-
-      return shouldGenerateRefs(
-        page,
-        headingTitles,
-        now,
-        lockPlannedPageIds.includes(page.id),
-      );
+      return shouldGenerateRefs(page, page.headingTitles, now, lockPlannedPageIds.includes(page.id));
     })
     .toSorted(function (left, right) {
-      const comparison = monthly.compare(
-        getPeriodPageKey(monthly, left),
-        getPeriodPageKey(monthly, right),
-      );
+      const comparison = monthly.compare(left.key, right.key);
       return comparison === 0 ? left.id.localeCompare(right.id) : comparison;
     });
 }
@@ -60,12 +45,11 @@ function listCandidates(
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
   diary: NotionDiary,
-  pages: readonly DiaryPage[],
-  destinations: readonly TransferDestination<unknown>[],
+  destinations: readonly TransferDestination<MonthlyPage["key"]>[],
   lockPlannedPageIds: readonly string[],
   now: Date,
 ): Promise<RefsResult> {
-  const candidates = listCandidates(pages, destinations, lockPlannedPageIds, now);
+  const candidates = listCandidates(destinations, lockPlannedPageIds, now);
   let generated = 0;
   let titleResolution: RefTitleResolutionCounts = { http: 0, anchor: 0, fallback: 0 };
 

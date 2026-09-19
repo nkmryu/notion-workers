@@ -4,7 +4,7 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 
-import type { DiaryPage, PeriodType } from "../diary/page";
+import type { NotionPage, PeriodType } from "../diary/page";
 
 import { isFullPage } from "@notionhq/client";
 
@@ -62,7 +62,7 @@ function parsePeriodType(properties: PageProperties): PeriodType | null {
     : (PERIOD_TYPE_BY_SELECT_NAME[selectName] ?? null);
 }
 
-export function parsePage(page: PageObjectResponse): DiaryPage {
+export function parsePage(page: PageObjectResponse): NotionPage {
   return {
     id: page.id,
     createdTime: page.created_time,
@@ -78,9 +78,9 @@ export function parseDataSourceTitleKey(
   return findTitlePropertyKey(dataSource.properties, "data source");
 }
 
-export function parseDiaryPage(
+export function parseNotionPage(
   row: QueryDataSourceResponse["results"][number],
-): DiaryPage {
+): NotionPage {
   if (!isFullPage(row)) {
     throw new Error(`query 結果にページ以外が含まれています: ${row.id}`);
   }

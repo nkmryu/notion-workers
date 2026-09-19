@@ -136,40 +136,24 @@ describe("buildRefsSection", () => {
 });
 
 describe("shouldGenerateRefs", () => {
-  const pastMonthly = {
-    createdTime: "2026-06-01T00:00:00.000Z",
-    title: "26.M06",
-    periodType: "monthly" as const,
-    isLocked: false,
-  };
+  const pastMonthly = { key: { year: 2026, month: 6 }, isLocked: false };
   const now = new Date("2026-07-22T03:00:00.000Z");
 
   it("Refs見出しがあれば生成しない", () => {
     // 見出しを冪等キーとして重複生成を防ぐことを保証する。
-    expect(
-      shouldGenerateRefs(pastMonthly, ["Refs"], now, true),
-    ).toBe(false);
+    expect(shouldGenerateRefs(pastMonthly, ["Refs"], now, true)).toBe(false);
   });
 
   it("未ロックの過去月はロック可能になった場合だけ生成する", () => {
     // 日次転記が完了する前にはRefsを確定せず、ロック直前だけ生成することを保証する。
-    expect(
-      shouldGenerateRefs(pastMonthly, [], now, false),
-    ).toBe(false);
-    expect(
-      shouldGenerateRefs(pastMonthly, [], now, true),
-    ).toBe(true);
+    expect(shouldGenerateRefs(pastMonthly, [], now, false)).toBe(false);
+    expect(shouldGenerateRefs(pastMonthly, [], now, true)).toBe(true);
   });
 
   it("今月のMonthlyは生成対象にしない", () => {
     // 進行中の月へRefsを生成しないことを保証する。
     expect(
-      shouldGenerateRefs(
-        { ...pastMonthly, title: "26.M07" },
-        [],
-        now,
-        true,
-      ),
+      shouldGenerateRefs({ key: { year: 2026, month: 7 }, isLocked: false }, [], now, true),
     ).toBe(false);
   });
 

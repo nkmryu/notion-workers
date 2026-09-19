@@ -1,6 +1,6 @@
 import type { Client } from "@notionhq/client";
 
-import type { DiaryPage } from "../diary/page";
+import type { NotionPage } from "../diary/page";
 
 import {
   collectAllDataSourceRows,
@@ -9,11 +9,11 @@ import {
 } from "@notionhq/client";
 
 import { JST_TIME_ZONE } from "../diary/jst-date";
-import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
+import { parseDataSourceTitleKey, parseNotionPage } from "./page";
 
 // メンテナンス処理が日誌データベースに対して必要とする操作。SDK の Client はこの背後に閉じ込める。
 export interface NotionDiary {
-  readonly listPages: () => Promise<readonly DiaryPage[]>;
+  readonly listPages: () => Promise<readonly NotionPage[]>;
   readonly createPageFromTemplate: (input: {
     readonly templateId: string;
     readonly title: string;
@@ -60,7 +60,7 @@ export function createNotionDiary(
         result_type: "page",
       });
 
-      return rows.map(parseDiaryPage);
+      return rows.map(parseNotionPage);
     },
 
     async createPageFromTemplate({ templateId, title }) {

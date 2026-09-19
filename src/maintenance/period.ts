@@ -1,4 +1,4 @@
-import type { DiaryPage } from "../diary/page";
+import type { DailyPage, PeriodPage } from "../diary/page";
 import type { PeriodCreationPlan, PeriodDefinition } from "../diary/period";
 import type { TransferDestination } from "../diary/transfer-plan";
 import type { NotionDiary } from "../notion/client";
@@ -14,7 +14,6 @@ import { transferEndedDailies } from "./transfer";
 
 // ロック前の仕上げ（Monthly の Refs）。ロック済みで仕上げが無いページの補完も担う。
 export interface FinalizeInput<K> {
-  readonly pages: readonly DiaryPage[];
   readonly destinations: readonly TransferDestination<K>[];
   readonly lockPlannedPageIds: readonly string[];
   readonly now: Date;
@@ -37,83 +36,51 @@ export interface PeriodMaintenanceResult<F> {
 
 async function createPeriodPages<K>(
   diary: NotionDiary,
-  period: PeriodDefinition<K>,
   templateId: string,
   plans: readonly PeriodCreationPlan<K>[],
-): Promise<readonly DiaryPage[]> {
-  let created: readonly DiaryPage[] = [];
+): Promise<readonly PeriodPage<K>[]> {
+  let created: readonly PeriodPage<K>[] = [];
 
   for (const plan of plans) {
     const pageId = await diary.createPageFromTemplate({ templateId, title: plan.title });
     await sleep(WRITE_INTERVAL_MS);
-    created = [
-      ...created,
-      {
-        id: pageId,
-        createdTime: plan.representativeCreatedTime,
-        // テンプレートの非同期適用後にも期間タイトルを確定させるため、同一実行でリネーム対象にする。
-        title: "",
-        isLocked: false,
-        periodType: period.type,
-      },
-    ];
+    // テンプレートの非同期適用後にも期間タイトルを確定させるため、同一実行でリネーム対象にする。
+    created = [...created, { id: pageId, title: "", isLocked: false, key: plan.key }];
   }
 
   return created;
-}
-
-function findHeadingTitles<K>(
-  destinations: readonly TransferDestination<K>[],
-  pageId: string,
-): readonly string[] {
-  return (
-    destinations.find(function (destination) {
-      return destination.id === pageId;
-    })?.headingTitles ?? []
-  );
 }
 
 // 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、仕上げてからリネーム・ロックする。
 export async function maintainPeriod<K, F>(
   diary: NotionDiary,
   maintenance: PeriodMaintenance<K, F>,
-  existingPages: readonly DiaryPage[],
+  dailies: readonly DailyPage[],
+  existingPages: readonly PeriodPage<K>[],
   now: Date,
 ): Promise<PeriodMaintenanceResult<F>> {
   const { period, templateId } = maintenance;
   const createdPages = await createPeriodPages(
     diary,
-    period,
     templateId,
-    planMissingPeriodPages(period, existingPages, now),
+    planMissingPeriodPages(period, dailies, existingPages, now),
   );
-  const pages = [...existingPages, ...createdPages];
   const transfer = await transferEndedDailies(
     diary,
     period,
-    pages,
+    dailies,
+    [...existingPages, ...createdPages],
     now,
     createdPages.map(function (page) {
       return page.id;
     }),
   );
-  const actions = pages.flatMap(function (page) {
-    if (page.periodType !== period.type) {
-      return [];
-    }
-
-    const canLock = shouldLockPeriodPage(
-      period,
-      page,
-      pages,
-      findHeadingTitles(transfer.destinations, page.id),
-      now,
-    );
+  const actions = transfer.destinations.flatMap(function (page) {
+    const canLock = shouldLockPeriodPage(period, page, dailies, page.headingTitles, now);
     const action = decidePeriodPageAction(period, page, now, canLock);
     return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page, action }];
   });
   const finalized = await maintenance.finalize({
-    pages,
     destinations: transfer.destinations,
     lockPlannedPageIds: actions.flatMap(function ({ page, action }) {
       return action.type === PAGE_ACTION_TYPE.lock ? [page.id] : [];

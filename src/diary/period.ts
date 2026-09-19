@@ -1,11 +1,9 @@
 import type { PageAction } from "./daily";
+import type { DailyPage, PeriodPage, PeriodType } from "./page";
 
 import { PAGE_ACTION_TYPE } from "./daily";
-import type { LockablePage, PageIdentity, PeriodType } from "./page";
-
 import { formatDailyTitleFromDateKey } from "./daily-title";
-import { dateKeyToDate, getJstDateKey, parseCreatedTime } from "./jst-date";
-import { getDailyDateKey } from "./page";
+import { dateKeyToDate, getJstDateKey } from "./jst-date";
 
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
 export interface PeriodDefinition<K> {
@@ -22,24 +20,10 @@ export interface PeriodDefinition<K> {
 export interface PeriodCreationPlan<K> {
   readonly key: K;
   readonly title: string;
-  // Notion の created_time は遡及できないため、同一実行内では期間内の Daily タイトル日で期間を識別する。
-  readonly representativeCreatedTime: string;
 }
 
-export function keyOfDateKey<K>(
-  period: PeriodDefinition<K>,
-  dateKey: string,
-): K {
+export function keyOfDateKey<K>(period: PeriodDefinition<K>, dateKey: string): K {
   return period.keyOfDate(dateKeyToDate(dateKey));
-}
-
-// 期間ページの期間は、タイトルが読めればタイトルから、読めなければ作成日から決める。
-export function getPeriodPageKey<K>(
-  period: PeriodDefinition<K>,
-  page: Pick<PageIdentity, "createdTime" | "title">,
-): K {
-  const createdKey = period.keyOfDate(parseCreatedTime(page.createdTime));
-  return period.parseTitle(page.title, period.yearOf(createdKey)) ?? createdKey;
 }
 
 function isSameKey<K>(period: PeriodDefinition<K>, left: K, right: K): boolean {
@@ -48,22 +32,17 @@ function isSameKey<K>(period: PeriodDefinition<K>, left: K, right: K): boolean {
 
 export function decidePeriodPageAction<K>(
   period: PeriodDefinition<K>,
-  page: LockablePage,
+  page: Pick<PeriodPage<K>, "key" | "title" | "isLocked">,
   now: Date,
   canLock: boolean,
 ): PageAction {
-  if (page.periodType !== period.type) {
-    return { type: PAGE_ACTION_TYPE.none };
-  }
-
-  const pageKey = getPeriodPageKey(period, page);
-  const comparison = period.compare(pageKey, period.keyOfDate(now));
+  const comparison = period.compare(page.key, period.keyOfDate(now));
 
   if (comparison === 1) {
     return { type: PAGE_ACTION_TYPE.none };
   }
 
-  const expectedTitle = period.formatTitle(pageKey);
+  const expectedTitle = period.formatTitle(page.key);
 
   if (page.title !== expectedTitle) {
     return { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
@@ -78,31 +57,20 @@ export function decidePeriodPageAction<K>(
 
 export function planMissingPeriodPages<K>(
   period: PeriodDefinition<K>,
-  pages: readonly PageIdentity[],
+  dailies: readonly Pick<DailyPage, "dateKey">[],
+  existingPages: readonly Pick<PeriodPage<K>, "key">[],
   now: Date,
 ): readonly PeriodCreationPlan<K>[] {
   const currentKey = period.keyOfDate(now);
-  const existingKeys = pages.flatMap<K>(function (page) {
-    return page.periodType === period.type
-      ? [getPeriodPageKey(period, page)]
-      : [];
-  });
 
-  return pages
-    .reduce<readonly PeriodCreationPlan<K>[]>(function (plans, page) {
-      const dateKey = getDailyDateKey(page, now);
-
-      if (dateKey === null) {
-        return plans;
-      }
-
-      const representativeDate = dateKeyToDate(dateKey);
-      const key = period.keyOfDate(representativeDate);
+  return dailies
+    .reduce<readonly PeriodCreationPlan<K>[]>(function (plans, daily) {
+      const key = keyOfDateKey(period, daily.dateKey);
       const planned = plans.some(function (plan) {
         return isSameKey(period, plan.key, key);
       });
-      const exists = existingKeys.some(function (existing) {
-        return isSameKey(period, existing, key);
+      const exists = existingPages.some(function (page) {
+        return isSameKey(period, page.key, key);
       });
 
       // 期間ページは期間が終わってから作成・転記・ロックを一度に行うアーカイブなので、進行中の期間には作らない。
@@ -110,14 +78,7 @@ export function planMissingPeriodPages<K>(
         return plans;
       }
 
-      return [
-        ...plans,
-        {
-          key,
-          title: period.formatTitle(key),
-          representativeCreatedTime: representativeDate.toISOString(),
-        },
-      ];
+      return [...plans, { key, title: period.formatTitle(key) }];
     }, [])
     .toSorted(function (left, right) {
       return period.compare(left.key, right.key);
@@ -127,34 +88,22 @@ export function planMissingPeriodPages<K>(
 // 期間内の終了済み Daily がすべて転記されている（見出しが揃っている）ときだけロックできる。
 export function shouldLockPeriodPage<K>(
   period: PeriodDefinition<K>,
-  page: LockablePage,
-  pages: readonly PageIdentity[],
+  page: Pick<PeriodPage<K>, "key" | "isLocked">,
+  dailies: readonly Pick<DailyPage, "dateKey">[],
   headingTitles: readonly string[],
   now: Date,
 ): boolean {
-  if (page.periodType !== period.type || page.isLocked) {
-    return false;
-  }
-
-  const pageKey = getPeriodPageKey(period, page);
-
-  if (period.compare(pageKey, period.keyOfDate(now)) !== -1) {
+  if (page.isLocked || period.compare(page.key, period.keyOfDate(now)) !== -1) {
     return false;
   }
 
   const todayKey = getJstDateKey(now);
 
-  return pages.every(function (candidate) {
-    const dateKey = getDailyDateKey(candidate, now);
+  return dailies.every(function (daily) {
+    const isEndedInPeriod =
+      daily.dateKey < todayKey &&
+      isSameKey(period, keyOfDateKey(period, daily.dateKey), page.key);
 
-    if (
-      dateKey === null ||
-      dateKey >= todayKey ||
-      !isSameKey(period, keyOfDateKey(period, dateKey), pageKey)
-    ) {
-      return true;
-    }
-
-    return headingTitles.includes(formatDailyTitleFromDateKey(dateKey));
+    return !isEndedInPeriod || headingTitles.includes(formatDailyTitleFromDateKey(daily.dateKey));
   });
 }

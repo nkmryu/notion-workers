@@ -1,11 +1,9 @@
-import type { LockablePage } from "./page";
+import type { MonthlyPage } from "./page";
 import type { CollectedRef, ResolvedRef } from "./ref-title";
 
 import { createSectionHeader, stripFencedCode } from "./markdown-section";
 import { monthly } from "./monthly";
 import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
-import { PERIOD_TYPE } from "./page";
-import { getPeriodPageKey } from "./period";
 
 export const REFS_HEADING_TITLE = "Refs";
 // 画像 "![alt](url)" は "!" で始まるため除き、本文のリンクだけを拾う。
@@ -109,17 +107,16 @@ export function buildRefsSection(refs: readonly ResolvedRef[]): string {
 
 // Refs は月が閉じる直前に一度だけ作る。ロック済みで Refs の無い過去月は、閉じ忘れとして補完する。
 export function shouldGenerateRefs(
-  page: LockablePage,
+  page: Pick<MonthlyPage, "key" | "isLocked">,
   headingTitles: readonly string[],
   now: Date,
   canLock: boolean,
 ): boolean {
-  if (page.periodType !== PERIOD_TYPE.monthly || headingTitles.includes(REFS_HEADING_TITLE)) {
+  if (headingTitles.includes(REFS_HEADING_TITLE)) {
     return false;
   }
 
-  const isPastMonth =
-    monthly.compare(getPeriodPageKey(monthly, page), monthly.keyOfDate(now)) === -1;
+  const isPastMonth = monthly.compare(page.key, monthly.keyOfDate(now)) === -1;
 
   return isPastMonth && (page.isLocked || canLock);
 }

@@ -1,16 +1,12 @@
-import type { DiaryPage, PeriodType } from "./page";
+import type { DailyPage, PeriodPage, PeriodType } from "./page";
 import type { PeriodDefinition } from "./period";
 
 import { formatDailyTitleFromDateKey } from "./daily-title";
 import { getJstDateKey, parseCreatedTime } from "./jst-date";
-import { getDailyDateKey } from "./page";
 import { keyOfDateKey } from "./period";
 
 // 転記先となる期間ページ。headingTitles は転記済み判定の冪等キー。
-export interface TransferDestination<K> {
-  readonly id: string;
-  readonly key: K;
-  readonly isLocked: boolean;
+export interface TransferDestination<K> extends PeriodPage<K> {
   readonly headingTitles: readonly string[];
 }
 
@@ -21,11 +17,7 @@ export interface TransferPlan {
   readonly dailyPageIds: readonly string[];
 }
 
-interface EndedDaily {
-  readonly id: string;
-  readonly createdTime: string;
-  readonly dateKey: string;
-}
+type EndedDaily = Pick<DailyPage, "id" | "createdTime" | "dateKey">;
 
 // 同じ日付の Daily が複数あるときは created_time 順に 1 つの見出しの下へ並べる。
 function compareDailies(left: EndedDaily, right: EndedDaily): number {
@@ -43,21 +35,15 @@ function compareDailies(left: EndedDaily, right: EndedDaily): number {
 }
 
 function listEndedDailies(
-  pages: readonly Pick<DiaryPage, "id" | "createdTime" | "title" | "periodType">[],
+  dailies: readonly EndedDaily[],
   now: Date,
 ): readonly EndedDaily[] {
   const todayKey = getJstDateKey(now);
 
-  return pages
-    .flatMap<EndedDaily>(function (page) {
-      const dateKey = getDailyDateKey(page, now);
-
-      // 今日の Daily は書きかけなので転記しない。
-      if (dateKey === null || dateKey >= todayKey) {
-        return [];
-      }
-
-      return [{ id: page.id, createdTime: page.createdTime, dateKey }];
+  // 今日の Daily は書きかけなので転記しない。
+  return dailies
+    .filter(function (daily) {
+      return daily.dateKey < todayKey;
     })
     .toSorted(compareDailies);
 }
@@ -87,11 +73,11 @@ function addToPlans(
 
 export function planTransfers<K>(
   period: PeriodDefinition<K>,
-  pages: readonly Pick<DiaryPage, "id" | "createdTime" | "title" | "periodType">[],
+  dailies: readonly EndedDaily[],
   destinations: readonly TransferDestination<K>[],
   now: Date,
 ): readonly TransferPlan[] {
-  return listEndedDailies(pages, now).reduce<readonly TransferPlan[]>(function (
+  return listEndedDailies(dailies, now).reduce<readonly TransferPlan[]>(function (
     plans,
     daily,
   ) {
@@ -111,12 +97,7 @@ export function planTransfers<K>(
 
     return addToPlans(
       plans,
-      {
-        periodType: period.type,
-        destinationPageId: destination.id,
-        title,
-        dailyPageIds: [],
-      },
+      { periodType: period.type, destinationPageId: destination.id, title, dailyPageIds: [] },
       daily.id,
     );
   }, []);

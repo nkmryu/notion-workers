@@ -4,7 +4,7 @@ Notion の日誌データベースを定期的に整える GitHub Actions ジョ
 
 ## 定期処理の内容
 
-`npm run maintain`（`src/main.ts`）を 1 回実行すると、全ページを 1 回取得したあと Daily → Weekly → Monthly の順に、それぞれを最新状態にします。
+`npm run maintain`（`src/main.ts`）を 1 回実行すると、全ページを 1 回取得して Daily / Weekly / Monthly に分類したあと、その順にそれぞれを最新状態にします。各段階は自分の種別のページと Daily 一覧だけを受け取ります。
 
 1. 今日のページが無ければ作成し、タイトルを `26.07.22（水）` 形式にします。過去日の未ロック Daily はロックします。
 2. 終了した ISO 週（今週より前）に日次ページがあり週次ページが無ければ、古い週から順にすべて作成し、タイトルを `26.W30` 形式にします。進行中の週には作りません。
@@ -44,7 +44,8 @@ src/
     pacing.ts        レート制限に合わせた待機
     error.ts
   diary/             日誌の規則。API に依存しない純粋関数だけを置く
-    page.ts          DiaryPage 型とページ分類（daily / weekly / monthly / memo）
+    page.ts          ページの型。NotionPage（読んだまま）と、分類済みの DailyPage / WeeklyPage / MonthlyPage、その集合 DiaryPages
+    classification.ts  NotionPage を一度だけ分類して DiaryPages にする（日付・期間キーをここで確定、メモはここで落ちる）
     daily.ts         今日の Daily の作成判定とリネーム・ロックの決定
     period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
     weekly.ts, monthly.ts   period.ts へ渡す ISO 週・暦月の定義

@@ -4,8 +4,8 @@ import {
   formatCalendarMonthTitle,
   parseCalendarMonthTitle,
 } from "./calendar-month";
+import { resolvePeriodKey } from "./classification";
 import { monthly } from "./monthly";
-import { getPeriodPageKey } from "./period";
 
 describe("月次タイトル", () => {
   it("暦年とゼロ埋めした月を整形する", () => {
@@ -16,7 +16,7 @@ describe("月次タイトル", () => {
   it("タイトルを作成月より優先して解析する", () => {
     // インポート後もタイトルが示す暦月へMonthlyを帰属させることを保証する。
     expect(
-      getPeriodPageKey(monthly, {
+      resolvePeriodKey(monthly, {
         createdTime: "2026-07-01T00:00:00.000Z",
         title: "25.M12",
       }),

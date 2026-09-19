@@ -2,14 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { CalendarMonth } from "./calendar-month";
 import type { IsoWeek } from "./iso-week";
-import type { DiaryPage } from "./page";
+import type { DailyPage } from "./page";
 import type { TransferDestination } from "./transfer-plan";
 
+import { parseDailyTitleDateKey } from "./daily-title";
 import { monthly } from "./monthly";
 import { planTransfers } from "./transfer-plan";
 import { weekly } from "./weekly";
 
-type DailyFixture = Pick<DiaryPage, "id" | "createdTime" | "title" | "periodType">;
+type DailyFixture = Pick<DailyPage, "id" | "createdTime" | "dateKey">;
 
 const now = new Date("2026-07-22T03:00:00.000Z");
 
@@ -18,7 +19,13 @@ function daily(
   title: string,
   createdTime = "2026-07-22T01:00:00.000Z",
 ): DailyFixture {
-  return { id, createdTime, title: title, periodType: null };
+  const dateKey = parseDailyTitleDateKey(title);
+
+  if (dateKey === null) {
+    throw new Error(`テスト用タイトルが日付形式ではありません: ${title}`);
+  }
+
+  return { id, createdTime, dateKey };
 }
 
 function weeklyPage(
@@ -29,6 +36,7 @@ function weeklyPage(
   return {
     id: `weekly-${week}`,
     key: { year: 2026, week },
+    title: `26.W${week}`,
     isLocked,
     headingTitles,
   };
@@ -113,17 +121,13 @@ describe("Weekly への転記計画", () => {
     ).toEqual([
       {
         periodType: "weekly",
-
         destinationPageId: "weekly-30",
-
         dailyPageIds: ["daily-20"],
         title: "26.07.20（月）",
       },
       {
         periodType: "weekly",
-
         destinationPageId: "weekly-30",
-
         dailyPageIds: ["daily-21"],
         title: "26.07.21（火）",
       },
@@ -154,50 +158,11 @@ describe("Weekly への転記計画", () => {
     ).toEqual([
       {
         periodType: "weekly",
-
         destinationPageId: "weekly-30",
-
         dailyPageIds: ["daily-earlier", "daily-later"],
         title: "26.07.20（月）",
       },
     ]);
-  });
-
-  it("メモを転記計画へ含めない", () => {
-    // 過去作成かつ未ロックでも非日付タイトルのページ本文を転記しないことを保証する。
-    expect(
-      planTransfers(
-        weekly,
-
-        [
-          daily(
-            "memo",
-            "読書メモ",
-            "2026-07-20T01:00:00.000Z",
-          ),
-        ],
-        [weeklyPage(30)],
-        now,
-      ),
-    ).toEqual([]);
-  });
-
-  it("MonthlyをWeekly転記の元ページに含めない", () => {
-    // 日付風タイトルでもMonthlyページをDaily本文として週次へ転記しないことを保証する。
-    expect(
-      planTransfers(
-        weekly,
-
-        [
-          {
-            ...daily("monthly", "26.07.20（月）"),
-            periodType: "monthly" as const,
-          },
-        ],
-        [weeklyPage(30)],
-        now,
-      ),
-    ).toEqual([]);
   });
 
   it("対象が7日あればすべてを日付昇順で返す", () => {
@@ -233,6 +198,7 @@ describe("Monthly への転記計画", () => {
   const monthlyPage: TransferDestination<CalendarMonth> = {
     id: "monthly-07",
     key: { year: 2026, month: 7 },
+    title: "26.M07",
     isLocked: false,
     headingTitles: [],
   };
@@ -249,27 +215,10 @@ pages, [weeklyPage(30, ["26.07.20（月）"])], now),
     expect(planTransfers(monthly, pages, [monthlyPage], now)).toEqual([
       {
         periodType: "monthly",
-
         destinationPageId: "monthly-07",
-
         dailyPageIds: ["daily-20"],
         title: "26.07.20（月）",
       },
     ]);
-  });
-
-  it("WeeklyやMonthlyを月次転記元へ含めない", () => {
-    // 定期ページ同士の本文をDailyとして月次へ混入させないことを保証する。
-    expect(
-      planTransfers(
-        monthly,
-        [
-          { ...daily("weekly", "26.07.20（月）"), periodType: "weekly" as const },
-          { ...daily("monthly", "26.07.20（月）"), periodType: "monthly" as const },
-        ],
-        [monthlyPage],
-        now,
-      ),
-    ).toEqual([]);
   });
 });

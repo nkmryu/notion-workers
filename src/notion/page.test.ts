@@ -5,7 +5,7 @@ import type {
 
 import { describe, expect, it } from "vitest";
 
-import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
+import { parseDataSourceTitleKey, parseNotionPage } from "./page";
 
 // SDK のレスポンス型は全フィールド必須なので、テストで検証する項目だけを持つ最小フィクスチャを型へ合わせる。
 function createPage(
@@ -55,11 +55,11 @@ describe("parseDataSourceTitleKey", () => {
   });
 });
 
-describe("parseDiaryPage", () => {
+describe("parseNotionPage", () => {
   it("type select が Weekly のページを週次として解析する", () => {
     // 名前と値が一致する select プロパティから週次ページを識別することを保証する。
     expect(
-      parseDiaryPage(
+      parseNotionPage(
           createPage({
             Name: { type: "title", title: [{ plain_text: "26.W30" }] },
             type: { type: "select", select: { name: "Weekly" } },
@@ -70,7 +70,7 @@ describe("parseDiaryPage", () => {
 
   it("type select が Monthly のページを月次として解析する", () => {
     // Notionの実表記Monthlyと厳密一致したページだけを月次として識別することを保証する。
-    const page = parseDiaryPage(
+    const page = parseNotionPage(
         createPage({
           Name: { type: "title", title: [{ plain_text: "26.M07" }] },
           type: { type: "select", select: { name: "Monthly" } },
@@ -82,7 +82,7 @@ describe("parseDiaryPage", () => {
 
   it("タイトル・作成日時・ロック状態を取り出す", () => {
     // 分類とアクション決定に必要な項目を SDK レスポンスから欠けなく写すことを保証する。
-    const page = parseDiaryPage(
+    const page = parseNotionPage(
         createPage(
           {
             日付: {
@@ -117,7 +117,7 @@ describe("parseDiaryPage", () => {
       ...(typeProperty === undefined ? {} : { type: typeProperty }),
     };
 
-    const page = parseDiaryPage(createPage(properties));
+    const page = parseNotionPage(createPage(properties));
 
     expect(page?.periodType).toBeNull();
   });
@@ -127,7 +127,7 @@ describe("parseDiaryPage", () => {
     const row = { object: "page", id: "partial" } as unknown as PageObjectResponse;
 
     expect(function () {
-      parseDiaryPage(row);
+      parseNotionPage(row);
     }).toThrow("query 結果にページ以外が含まれています: partial");
   });
 });
