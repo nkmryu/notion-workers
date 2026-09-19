@@ -4,10 +4,16 @@ import { formatDailyTitleFromDateKey } from "./daily-title";
 import { getJstDateKey } from "./jst-date";
 import { getDailyDateKey } from "./page";
 
+export const PAGE_ACTION_TYPE = {
+  rename: "rename",
+  lock: "lock",
+  none: "none",
+} as const;
+
 export type PageAction =
-  | { readonly type: "rename"; readonly title: string }
-  | { readonly type: "lock" }
-  | { readonly type: "none" };
+  | { readonly type: typeof PAGE_ACTION_TYPE.rename; readonly title: string }
+  | { readonly type: typeof PAGE_ACTION_TYPE.lock }
+  | { readonly type: typeof PAGE_ACTION_TYPE.none };
 
 export function shouldCreateTodayPage(
   pages: readonly PageIdentity[],
@@ -24,7 +30,7 @@ export function decideDailyPageAction(page: LockablePage, now: Date): PageAction
   const dateKey = getDailyDateKey(page, now);
 
   if (dateKey === null) {
-    return { type: "none" };
+    return { type: PAGE_ACTION_TYPE.none };
   }
 
   const todayKey = getJstDateKey(now);
@@ -32,13 +38,13 @@ export function decideDailyPageAction(page: LockablePage, now: Date): PageAction
 
   if (dateKey === todayKey) {
     return page.title === expectedTitle
-      ? { type: "none" }
-      : { type: "rename", title: expectedTitle };
+      ? { type: PAGE_ACTION_TYPE.none }
+      : { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
   }
 
   if (dateKey < todayKey && !page.isLocked) {
-    return { type: "lock" };
+    return { type: PAGE_ACTION_TYPE.lock };
   }
 
-  return { type: "none" };
+  return { type: PAGE_ACTION_TYPE.none };
 }

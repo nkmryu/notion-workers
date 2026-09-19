@@ -6,7 +6,7 @@ import type { RefTitleResolutionCounts } from "./ref-title-lookup";
 import { monthly } from "../diary/monthly";
 import { getPeriodPageKey } from "../diary/period";
 import { buildRefsSection, collectRefs, shouldGenerateRefs } from "../diary/refs";
-import { extractHeadingTitles } from "../diary/transfer-markdown";
+import { extractSectionTitles } from "../diary/markdown-section";
 import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { restoreExternalLinks } from "./external-links";
 import { lookupRefTitles } from "./ref-title-lookup";
@@ -74,7 +74,7 @@ export async function generateRefs(
     // 事前判定に使った見出し一覧は取得時点の値なので、書き込み直前に読み直した本文で Refs の有無を再判定し、二重生成を防ぐ。
     const stillNeeded = shouldGenerateRefs(
       page,
-      extractHeadingTitles(markdown),
+      extractSectionTitles(markdown),
       now,
       lockPlannedPageIds.includes(page.id),
     );

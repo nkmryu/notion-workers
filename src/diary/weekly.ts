@@ -1,6 +1,8 @@
 import type { IsoWeek } from "./iso-week";
 import type { PeriodDefinition } from "./period";
 
+import { PERIOD_TYPE } from "./page";
+
 import {
   compareIsoWeeks,
   formatIsoWeekTitle,
@@ -9,7 +11,8 @@ import {
 } from "./iso-week";
 
 export const weekly: PeriodDefinition<IsoWeek> = {
-  type: "weekly",
+  type: PERIOD_TYPE.weekly,
+  finalizesAfterLock: false,
   keyOfDate: getJstIsoWeek,
   compare: compareIsoWeeks,
   formatTitle: formatIsoWeekTitle,

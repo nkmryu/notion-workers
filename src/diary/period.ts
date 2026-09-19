@@ -1,4 +1,6 @@
 import type { PageAction } from "./daily";
+
+import { PAGE_ACTION_TYPE } from "./daily";
 import type { LockablePage, PageIdentity, PeriodType } from "./page";
 
 import { formatDailyTitleFromDateKey } from "./daily-title";
@@ -8,6 +10,8 @@ import { getDailyDateKey } from "./page";
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
 export interface PeriodDefinition<K> {
   readonly type: PeriodType;
+  // ロック後にも追記する工程（Monthly の Refs）を持つか。持つ期間はロック済みページの見出しも読む。
+  readonly finalizesAfterLock: boolean;
   readonly keyOfDate: (date: Date) => K;
   readonly compare: (left: K, right: K) => -1 | 0 | 1;
   readonly formatTitle: (key: K) => string;
@@ -49,27 +53,27 @@ export function decidePeriodPageAction<K>(
   canLock: boolean,
 ): PageAction {
   if (page.periodType !== period.type) {
-    return { type: "none" };
+    return { type: PAGE_ACTION_TYPE.none };
   }
 
   const pageKey = getPeriodPageKey(period, page);
   const comparison = period.compare(pageKey, period.keyOfDate(now));
 
   if (comparison === 1) {
-    return { type: "none" };
+    return { type: PAGE_ACTION_TYPE.none };
   }
 
   const expectedTitle = period.formatTitle(pageKey);
 
   if (page.title !== expectedTitle) {
-    return { type: "rename", title: expectedTitle };
+    return { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
   }
 
   if (comparison === -1 && !page.isLocked && canLock) {
-    return { type: "lock" };
+    return { type: PAGE_ACTION_TYPE.lock };
   }
 
-  return { type: "none" };
+  return { type: PAGE_ACTION_TYPE.none };
 }
 
 export function planMissingPeriodPages<K>(

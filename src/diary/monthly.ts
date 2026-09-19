@@ -1,6 +1,8 @@
 import type { CalendarMonth } from "./calendar-month";
 import type { PeriodDefinition } from "./period";
 
+import { PERIOD_TYPE } from "./page";
+
 import {
   compareCalendarMonths,
   formatCalendarMonthTitle,
@@ -9,7 +11,8 @@ import {
 } from "./calendar-month";
 
 export const monthly: PeriodDefinition<CalendarMonth> = {
-  type: "monthly",
+  type: PERIOD_TYPE.monthly,
+  finalizesAfterLock: true,
   keyOfDate: getJstCalendarMonth,
   compare: compareCalendarMonths,
   formatTitle: formatCalendarMonthTitle,

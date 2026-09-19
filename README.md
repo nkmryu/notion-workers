@@ -49,8 +49,10 @@ src/
     period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
     weekly.ts, monthly.ts   period.ts へ渡す ISO 週・暦月の定義
     transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
-    transfer-markdown.ts    転記セクションの Markdown 組み立てと見出し抽出
+    transfer-markdown.ts    転記セクションの Markdown 組み立て
     refs.ts          Refs の収集とセクション組み立て
+    markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
+    notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
   maintenance/       手続き。diary の判断に従って notion を呼ぶ
     run.ts           1 実行の流れ（作成 → 転記 → Refs → リネーム・ロック）

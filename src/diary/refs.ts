@@ -1,7 +1,10 @@
 import type { LockablePage } from "./page";
 import type { CollectedRef, ResolvedRef } from "./ref-title";
 
+import { createSectionHeader, stripFencedCode } from "./markdown-section";
 import { monthly } from "./monthly";
+import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
+import { PERIOD_TYPE } from "./page";
 import { getPeriodPageKey } from "./period";
 
 export const REFS_HEADING_TITLE = "Refs";
@@ -11,35 +14,11 @@ const MARKDOWN_LINK_PATTERN =
 // bookmark は <unknown url/>、embed は <embed src> で表現される。video 等のメディアは対象外。
 const BLOCK_URL_PATTERN =
   /<unknown\b[^>]*\burl="(https?:\/\/[^"]*)"[^>]*\/>|<embed\b[^>]*\bsrc="(https?:\/\/[^"]*)"/g;
-// コード例に含まれる URL は参照ではないため、収集前にコードブロックを取り除く。
-const FENCED_CODE_PATTERN = /```[\s\S]*?```/g;
 const MARKDOWN_ESCAPE_PATTERN = /\\(.)/g;
 const REFS_TITLE_SPECIAL_PATTERN = /[\\[\]*_`~|<>]/g;
 
 interface PositionedRef extends CollectedRef {
   readonly index: number;
-}
-
-function isNotionInternalUrl(url: string): boolean {
-  if (url.startsWith("/")) {
-    return true;
-  }
-
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return (
-      hostname === "notion.so" ||
-      hostname.endsWith(".notion.so") ||
-      hostname === "app.notion.com"
-    );
-  } catch {
-    return false;
-  }
-}
-
-// Notion がホストするファイルの署名付き URL は失効するため、参照として残さない。
-function isSignedFileUrl(url: string): boolean {
-  return url.includes("X-Amz-");
 }
 
 function isRefTarget(url: string): boolean {
@@ -99,7 +78,8 @@ function mergeRef(
 }
 
 export function collectRefs(markdown: string): readonly CollectedRef[] {
-  const prose = markdown.replace(FENCED_CODE_PATTERN, "");
+  // コード例に含まれる URL は参照ではないため、収集前にコードブロックを取り除く。
+  const prose = stripFencedCode(markdown);
 
   return [...collectLinkRefs(prose), ...collectBlockUrlRefs(prose)]
     .toSorted(function (left, right) {
@@ -124,7 +104,7 @@ export function buildRefsSection(refs: readonly ResolvedRef[]): string {
     return `- [${escapeRefTitle(ref.title)}](${ref.url})`;
   });
 
-  return `---\n## ${REFS_HEADING_TITLE}\n${bullets.join("\n")}\n`;
+  return `${createSectionHeader(REFS_HEADING_TITLE)}${bullets.join("\n")}\n`;
 }
 
 // Refs は月が閉じる直前に一度だけ作る。ロック済みで Refs の無い過去月は、閉じ忘れとして補完する。
@@ -134,7 +114,7 @@ export function shouldGenerateRefs(
   now: Date,
   canLock: boolean,
 ): boolean {
-  if (page.periodType !== "monthly" || headingTitles.includes(REFS_HEADING_TITLE)) {
+  if (page.periodType !== PERIOD_TYPE.monthly || headingTitles.includes(REFS_HEADING_TITLE)) {
     return false;
   }
 

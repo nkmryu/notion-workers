@@ -5,10 +5,10 @@ import type { DailyMarkdown } from "../diary/transfer-markdown";
 import type { NotionDiary } from "../notion/client";
 
 import { getPeriodPageKey } from "../diary/period";
+import { extractSectionTitles } from "../diary/markdown-section";
 import {
   createTransferFallbackSection,
   createTransferSection,
-  extractHeadingTitles,
 } from "../diary/transfer-markdown";
 import { planTransfers } from "../diary/transfer-plan";
 import { isNotionValidationError } from "../notion/error";
@@ -25,7 +25,7 @@ export async function readHeadingTitles(
   diary: NotionDiary,
   pageId: string,
 ): Promise<readonly string[]> {
-  const headingTitles = extractHeadingTitles(await diary.getPageMarkdown(pageId));
+  const headingTitles = extractSectionTitles(await diary.getPageMarkdown(pageId));
   await sleep(READ_INTERVAL_MS);
 
   return headingTitles;
@@ -44,10 +44,9 @@ async function listDestinations<K>(
       continue;
     }
 
-    // ロック済み Weekly には転記しないので見出しを読まない。Monthly は Refs 未生成の月を拾うためロック済みでも読む。
     const canSkipReading =
       knownEmptyPageIds.includes(page.id) ||
-      (period.type === "weekly" && page.isLocked);
+      (page.isLocked && !period.finalizesAfterLock);
     destinations = [
       ...destinations,
       {

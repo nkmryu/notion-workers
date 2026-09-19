@@ -1,18 +1,18 @@
 import { describe, expect, it } from "vitest";
 
+import { extractSectionTitles } from "./markdown-section";
 import {
   createTransferFallbackSection,
   createTransferSection,
-  extractHeadingTitles,
   extractNotionBlockLinkIds,
-  replaceNotionBlockLinks,
+  restoreBlockLinks,
 } from "./transfer-markdown";
 
 const DAILY_ID = "3b5372a1-dbcd-81d9-beaa-fc44aac44a64";
 const MENTION =
   '<mention-page url="https://app.notion.com/p/3b5372a1dbcd81d9beaafc44aac44a64"/>';
 
-describe("extractHeadingTitles", () => {
+describe("extractSectionTitles", () => {
   it("最上位の見出し2だけを転記済み見出しとして抽出する", () => {
     // 見出し3・インデントされた見出し・空見出しを転記済み判定へ混ぜないことを保証する。
     const markdown = [
@@ -25,7 +25,7 @@ describe("extractHeadingTitles", () => {
       "## 26.07.21（火）",
     ].join("\n");
 
-    expect(extractHeadingTitles(markdown)).toEqual([
+    expect(extractSectionTitles(markdown)).toEqual([
       "26.07.20（月）",
       "26.07.21（火）",
     ]);
@@ -35,7 +35,7 @@ describe("extractHeadingTitles", () => {
     // コード例の "## " 行を転記済みと誤判定して転記を飛ばさないことを保証する。
     const markdown = "```md\n## 26.07.20（月）\n```\n## 26.07.21（火）";
 
-    expect(extractHeadingTitles(markdown)).toEqual(["26.07.21（火）"]);
+    expect(extractSectionTitles(markdown)).toEqual(["26.07.21（火）"]);
   });
 });
 
@@ -140,7 +140,7 @@ describe("Notionブロックリンクの復元", () => {
     const unresolved =
       '<unknown url="https://app.notion.com/p/3a2372a1dbcd81a2acf2f0ecc76d3d1a#00000000000000000000000000000000" alt="external_object_instance"/>';
 
-    expect(replaceNotionBlockLinks(`${blockLink}\n${unresolved}`, blockUrls)).toBe(
+    expect(restoreBlockLinks(`${blockLink}\n${unresolved}`, blockUrls)).toBe(
       `[https://zenn.dev/article](https://zenn.dev/article)\n${unresolved}`,
     );
   });

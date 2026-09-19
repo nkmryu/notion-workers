@@ -1,8 +1,8 @@
-const TIME_ZONE = "Asia/Tokyo";
+export const JST_TIME_ZONE = "Asia/Tokyo";
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: TIME_ZONE,
+  timeZone: JST_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",

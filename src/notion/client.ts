@@ -8,6 +8,7 @@ import {
   isFullDataSource,
 } from "@notionhq/client";
 
+import { JST_TIME_ZONE } from "../diary/jst-date";
 import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
 
 // メンテナンス処理が日誌データベースに対して必要とする操作。SDK の Client はこの背後に閉じ込める。
@@ -70,7 +71,7 @@ export function createNotionDiary(
         template: {
           type: "template_id",
           template_id: templateId,
-          timezone: "Asia/Tokyo",
+          timezone: JST_TIME_ZONE,
         },
       });
 

@@ -8,11 +8,13 @@ import type { DiaryPage, PeriodType } from "../diary/page";
 
 import { isFullPage } from "@notionhq/client";
 
+import { PERIOD_TYPE } from "../diary/page";
+
 const PAGE_TYPE_PROPERTY_NAME = "type";
 // 表記ゆれを許すと DB 側の意図しない選択肢へ誤マッチするため、小文字へ正規化せず Notion の select 選択肢と厳密に一致させる。
 const PERIOD_TYPE_BY_SELECT_NAME: Readonly<Record<string, PeriodType>> = {
-  Weekly: "weekly",
-  Monthly: "monthly",
+  Weekly: PERIOD_TYPE.weekly,
+  Monthly: PERIOD_TYPE.monthly,
 };
 
 type PageProperties = PageObjectResponse["properties"];

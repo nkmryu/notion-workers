@@ -8,7 +8,8 @@ import type { TransferDestination } from "../diary/transfer-plan";
 import type { NotionDiary } from "../notion/client";
 import type { TransferResult } from "./transfer";
 
-import { decideDailyPageAction } from "../diary/daily";
+import { PAGE_ACTION_TYPE, decideDailyPageAction } from "../diary/daily";
+import { PERIOD_TYPE } from "../diary/page";
 import { monthly } from "../diary/monthly";
 import { decidePeriodPageAction, shouldLockPeriodPage } from "../diary/period";
 import { weekly } from "../diary/weekly";
@@ -36,7 +37,7 @@ export interface MaintenanceSummary {
 
 interface PlannedAction {
   readonly page: DiaryPage;
-  readonly action: Exclude<PageAction, { readonly type: "none" }>;
+  readonly action: Exclude<PageAction, { readonly type: typeof PAGE_ACTION_TYPE.none }>;
 }
 
 function findHeadingTitles<K>(
@@ -75,14 +76,15 @@ function decideAction(
   monthlyTransfer: TransferResult<CalendarMonth>,
   now: Date,
 ): PageAction {
-  switch (page.periodType) {
-    case "weekly":
-      return decidePeriodAction(weekly, page, pages, weeklyTransfer, now);
-    case "monthly":
-      return decidePeriodAction(monthly, page, pages, monthlyTransfer, now);
-    case null:
-      return decideDailyPageAction(page, now);
+  if (page.periodType === weekly.type) {
+    return decidePeriodAction(weekly, page, pages, weeklyTransfer, now);
   }
+
+  if (page.periodType === monthly.type) {
+    return decidePeriodAction(monthly, page, pages, monthlyTransfer, now);
+  }
+
+  return decideDailyPageAction(page, now);
 }
 
 function planActions(
@@ -93,7 +95,7 @@ function planActions(
 ): readonly PlannedAction[] {
   return pages.flatMap<PlannedAction>(function (page) {
     const action = decideAction(page, pages, weeklyTransfer, monthlyTransfer, now);
-    return action.type === "none" ? [] : [{ page, action }];
+    return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page, action }];
   });
 }
 
@@ -102,13 +104,13 @@ async function applyActions(
   actions: readonly PlannedAction[],
 ): Promise<void> {
   const titleKey = actions.some(function ({ action }) {
-    return action.type === "rename";
+    return action.type === PAGE_ACTION_TYPE.rename;
   })
     ? await diary.getTitleKey()
     : "";
 
   for (const { page, action } of actions) {
-    if (action.type === "rename") {
+    if (action.type === PAGE_ACTION_TYPE.rename) {
       await diary.renamePage(page.id, titleKey, action.title);
     } else {
       await diary.lockPage(page.id);
@@ -141,18 +143,18 @@ export async function runMaintenance(
     weekly,
     pages,
     now,
-    createdPageIds(created.pages, "weekly"),
+    createdPageIds(created.pages, weekly.type),
   );
   const monthlyTransfer = await transferEndedDailies(
     diary,
     monthly,
     pages,
     now,
-    createdPageIds(created.pages, "monthly"),
+    createdPageIds(created.pages, monthly.type),
   );
   const actions = planActions(pages, weeklyTransfer, monthlyTransfer, now);
   const lockPlannedMonthlyIds = actions.flatMap<string>(function ({ page, action }) {
-    return action.type === "lock" && page.periodType === "monthly" ? [page.id] : [];
+    return action.type === PAGE_ACTION_TYPE.lock && page.periodType === monthly.type ? [page.id] : [];
   });
   // Refs はロックの前に書く。ロック後に書けなくなることは無いが、閉じた月の内容を後から変えないため。
   const refs = await generateRefs(
@@ -178,10 +180,10 @@ export async function runMaintenance(
     refAnchorTitles: refs.titleResolution.anchor,
     refTitleFallbacks: refs.titleResolution.fallback,
     renames: actions.filter(function ({ action }) {
-      return action.type === "rename";
+      return action.type === PAGE_ACTION_TYPE.rename;
     }).length,
     locks: actions.filter(function ({ action }) {
-      return action.type === "lock";
+      return action.type === PAGE_ACTION_TYPE.lock;
     }).length,
   };
 }

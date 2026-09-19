@@ -1,17 +1,21 @@
-const HEADING_PATTERN = /^## (.+)$/gm;
-const FENCED_CODE_PATTERN = /```[\s\S]*?```/g;
+import { createSectionHeader } from "./markdown-section";
+import {
+  createNotionPageUrl,
+  isSignedFileUrl,
+  matchNotionBlockLinks,
+  replaceNotionBlockLinks,
+} from "./notion-url";
+
+// toggle 等の子として置かれた行は先頭にタブが付くため、インデントを保ったまま置換する。
 // Notion がホストするファイルは署名付き URL で返り、短時間で失効するため転記先へは持ち込めない。
 // File Upload API（external_url）で取り込み直す案は、対象が全 Daily で月 0.4 枚、うち半数が toggle 内で
 // 位置を再現できず、Markdown 転記へブロック追記と非同期待ちを持ち込むため 2026-09-19 に見送った。
-// toggle 等の子として置かれた行は先頭にタブが付くため、インデントを保ったまま置換する。
-const SIGNED_FILE_LINK_PATTERN =
-  /^([ \t]*)(?:!?\[[^\]]*\]\([^)\s]*X-Amz-[^)\s]*\)|<[a-z-]+\b[^>]*X-Amz-[^>]*>(?:<\/[a-z-]+>)?)$/gm;
+// 行全体が 1 つのリンク・画像・メディアタグである行を捉え、URL を取り出す。
+const FILE_LINE_PATTERN =
+  /^([ \t]*)(?:!?\[[^\]]*\]\(([^)\s]*)\)|<[a-z-]+\b[^>]*\b(?:src|url)="([^"]*)"[^>]*>(?:<\/[a-z-]+>)?)$/gm;
 // bookmark・link_preview など Markdown 化できないブロックは <unknown/> になり、そのまま書き戻せない。
 const UNKNOWN_BLOCK_PATTERN = /^([ \t]*)<unknown\b([^>]*)\/>$/gm;
 const URL_ATTRIBUTE_PATTERN = /\burl="([^"]*)"/;
-// プレビュー展開済みの bookmark / link_preview は外部 URL ではなく自ブロックへのリンクで出力される。
-const NOTION_BLOCK_LINK_PATTERN =
-  /<unknown\b[^>]*\burl="https:\/\/app\.notion\.com\/p\/[0-9a-f]{32}#([0-9a-f]{32})"[^>]*\/>/g;
 const FALLBACK_MESSAGE =
   "（この日の転記はブロック互換性の問題で省略。元ページを参照）";
 
@@ -21,41 +25,27 @@ export interface DailyMarkdown {
 }
 
 function createPageMention(pageId: string): string {
-  return `<mention-page url="https://app.notion.com/p/${pageId.replaceAll("-", "")}"/>`;
-}
-
-export function extractHeadingTitles(markdown: string): readonly string[] {
-  // コードブロック内の "## " 行を転記済み見出しと誤認しないよう、先に取り除く。
-  const prose = markdown.replace(FENCED_CODE_PATTERN, "");
-
-  return [...prose.matchAll(HEADING_PATTERN)].flatMap<string>(function (
-    match,
-  ) {
-    const title = match[1]?.trim() ?? "";
-    return title === "" ? [] : [title];
-  });
+  return `<mention-page url="${createNotionPageUrl(pageId)}"/>`;
 }
 
 export function extractNotionBlockLinkIds(markdown: string): readonly string[] {
   return [
     ...new Set(
-      [...markdown.matchAll(NOTION_BLOCK_LINK_PATTERN)].flatMap<string>(
-        function (match) {
-          return match[1] === undefined ? [] : [match[1]];
-        },
-      ),
+      matchNotionBlockLinks(markdown).flatMap<string>(function (match) {
+        return match[1] === undefined ? [] : [match[1]];
+      }),
     ),
   ];
 }
 
-export function replaceNotionBlockLinks(
+export function restoreBlockLinks(
   markdown: string,
   blockUrls: ReadonlyMap<string, string>,
 ): string {
-  return markdown.replace(NOTION_BLOCK_LINK_PATTERN, function (match, blockId: string) {
+  return replaceNotionBlockLinks(markdown, function (blockId, original) {
     const url = blockUrls.get(blockId);
 
-    return url === undefined ? match : `[${url}](${url})`;
+    return url === undefined ? original : `[${url}](${url})`;
   });
 }
 
@@ -64,8 +54,12 @@ function sanitizeDailyMarkdown(daily: DailyMarkdown): string {
 
   return daily.markdown
     .replace(
-      SIGNED_FILE_LINK_PATTERN,
-      `$1（画像/ファイルは元ページを参照） ${mention}`,
+      FILE_LINE_PATTERN,
+      function (match, indent: string, linkUrl?: string, tagUrl?: string) {
+        return isSignedFileUrl(linkUrl ?? tagUrl ?? "")
+          ? `${indent}（画像/ファイルは元ページを参照） ${mention}`
+          : match;
+      },
     )
     .replace(
       UNKNOWN_BLOCK_PATTERN,
@@ -80,10 +74,6 @@ function sanitizeDailyMarkdown(daily: DailyMarkdown): string {
     );
 }
 
-function createHeader(title: string): string {
-  return `---\n## ${title}\n`;
-}
-
 export function createTransferSection(
   title: string,
   dailies: readonly DailyMarkdown[],
@@ -92,7 +82,7 @@ export function createTransferSection(
     return sanitizeDailyMarkdown(daily).replace(/\n+$/, "");
   });
 
-  return `${createHeader(title)}${bodies.join("\n")}\n`;
+  return `${createSectionHeader(title)}${bodies.join("\n")}\n`;
 }
 
 export function createTransferFallbackSection(
@@ -101,5 +91,5 @@ export function createTransferFallbackSection(
 ): string {
   const mentions = dailyPageIds.map(createPageMention).join(" ");
 
-  return `${createHeader(title)}${FALLBACK_MESSAGE} ${mentions}\n`;
+  return `${createSectionHeader(title)}${FALLBACK_MESSAGE} ${mentions}\n`;
 }

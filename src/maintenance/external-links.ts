@@ -2,7 +2,7 @@ import type { NotionDiary } from "../notion/client";
 
 import {
   extractNotionBlockLinkIds,
-  replaceNotionBlockLinks,
+  restoreBlockLinks,
 } from "../diary/transfer-markdown";
 import { READ_INTERVAL_MS, sleep } from "../notion/pacing";
 
@@ -22,5 +22,5 @@ export async function restoreExternalLinks(
     }
   }
 
-  return replaceNotionBlockLinks(markdown, blockUrls);
+  return restoreBlockLinks(markdown, blockUrls);
 }
