@@ -32,6 +32,33 @@ Markdown への変換で失われるものは次のように扱います。
 
 空でない非日付タイトルはメモとして扱い、リネーム・ロック・定期ページ作成・転記から除外します。メモは自動でロックしません。Weekly と Monthly も Daily の全処理から除外します。テンプレート適用中のページに限り、今日作成された空タイトルを今日の Daily 候補として扱います。
 
+## コード構成
+
+```
+src/
+  main.ts            エントリポイント（npm run maintain）
+  config.ts          環境変数から設定と Notion クライアントを組み立てる
+  notion/            Notion API との境界。SDK の呼び出しとレスポンスの変換だけを置く
+    client.ts        NotionDiary: メンテナンスが必要とする操作のインターフェースと実装
+    page.ts          API レスポンス → DiaryPage
+    pacing.ts        レート制限に合わせた待機
+    error.ts
+  diary/             日誌の規則。API に依存しない純粋関数だけを置く
+    page.ts          DiaryPage 型とページ分類（daily / weekly / monthly / memo）
+    daily.ts         今日の Daily の作成判定とリネーム・ロックの決定
+    period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
+    weekly.ts, monthly.ts   period.ts へ渡す ISO 週・暦月の定義
+    transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
+    transfer-markdown.ts    転記セクションの Markdown 組み立てと見出し抽出
+    refs.ts          Refs の収集とセクション組み立て
+    jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
+  maintenance/       手続き。diary の判断に従って notion を呼ぶ
+    run.ts           1 実行の流れ（作成 → 転記 → Refs → リネーム・ロック）
+    page-creation.ts, transfer.ts, refs.ts, external-links.ts, ref-title-lookup.ts
+```
+
+Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定義（期間キーの求め方・比較・タイトル）だけで、判断と手続きは共通です。
+
 ## セットアップ
 
 Node.js を用意し、依存パッケージをインストールします。
