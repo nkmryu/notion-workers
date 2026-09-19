@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CalendarMonth } from "./calendar-month";
 import type { IsoWeek } from "./iso-week";
-import type { DailyPage } from "./page";
-import type { TransferDestination } from "./transfer-plan";
+import type { DailyPage, PeriodArchive } from "./page";
 
 import { parseDailyTitleDateKey } from "./daily-title";
 import { monthly } from "./monthly";
@@ -30,15 +29,16 @@ function daily(
 
 function weeklyPage(
   week: number,
-  headingTitles: readonly string[] = [],
+  transferredDateKeys: readonly string[] = [],
   isLocked = false,
-): TransferDestination<IsoWeek> {
+): PeriodArchive<IsoWeek> {
   return {
     id: `weekly-${week}`,
     key: { year: 2026, week },
     title: `26.W${week}`,
     isLocked,
-    headingTitles,
+    transferredDateKeys,
+    hasRefs: false,
   };
 }
 
@@ -50,7 +50,7 @@ describe("Weekly への転記計画", () => {
         weekly,
 
         [daily("daily-20", "26.07.20（月）")],
-        [weeklyPage(30, ["26.07.20（月）"])],
+        [weeklyPage(30, ["2026-07-20"])],
         now,
       ),
     ).toEqual([]);
@@ -122,12 +122,14 @@ describe("Weekly への転記計画", () => {
       {
         periodType: "weekly",
         destinationPageId: "weekly-30",
+        dateKey: "2026-07-20",
         dailyPageIds: ["daily-20"],
         title: "26.07.20（月）",
       },
       {
         periodType: "weekly",
         destinationPageId: "weekly-30",
+        dateKey: "2026-07-21",
         dailyPageIds: ["daily-21"],
         title: "26.07.21（火）",
       },
@@ -159,6 +161,7 @@ describe("Weekly への転記計画", () => {
       {
         periodType: "weekly",
         destinationPageId: "weekly-30",
+        dateKey: "2026-07-20",
         dailyPageIds: ["daily-earlier", "daily-later"],
         title: "26.07.20（月）",
       },
@@ -195,12 +198,13 @@ describe("Weekly への転記計画", () => {
 });
 
 describe("Monthly への転記計画", () => {
-  const monthlyPage: TransferDestination<CalendarMonth> = {
+  const monthlyPage: PeriodArchive<CalendarMonth> = {
     id: "monthly-07",
     key: { year: 2026, month: 7 },
     title: "26.M07",
     isLocked: false,
-    headingTitles: [],
+    transferredDateKeys: [],
+    hasRefs: false,
   };
 
   it("Weeklyとは独立して同じDailyを同月Monthlyへ計画する", () => {
@@ -210,12 +214,13 @@ describe("Monthly への転記計画", () => {
     expect(
       planTransfers(
         weekly,
-pages, [weeklyPage(30, ["26.07.20（月）"])], now),
+pages, [weeklyPage(30, ["2026-07-20"])], now),
     ).toEqual([]);
     expect(planTransfers(monthly, pages, [monthlyPage], now)).toEqual([
       {
         periodType: "monthly",
         destinationPageId: "monthly-07",
+        dateKey: "2026-07-20",
         dailyPageIds: ["daily-20"],
         title: "26.07.20（月）",
       },

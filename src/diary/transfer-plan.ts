@@ -1,18 +1,14 @@
-import type { DailyPage, PeriodPage, PeriodType } from "./page";
+import type { DailyPage, PeriodArchive, PeriodType } from "./page";
 import type { PeriodDefinition } from "./period";
 
 import { formatDailyTitleFromDateKey } from "./daily-title";
 import { getJstDateKey, parseCreatedTime } from "./jst-date";
-import { keyOfDateKey } from "./period";
-
-// 転記先となる期間ページ。headingTitles は転記済み判定の冪等キー。
-export interface TransferDestination<K> extends PeriodPage<K> {
-  readonly headingTitles: readonly string[];
-}
+import { isTransferred, keyOfDateKey } from "./period";
 
 export interface TransferPlan {
   readonly periodType: PeriodType;
   readonly destinationPageId: string;
+  readonly dateKey: string;
   readonly title: string;
   readonly dailyPageIds: readonly string[];
 }
@@ -56,7 +52,7 @@ function addToPlans(
   const existing = plans.find(function (candidate) {
     return (
       candidate.destinationPageId === plan.destinationPageId &&
-      candidate.title === plan.title
+      candidate.dateKey === plan.dateKey
     );
   });
 
@@ -74,7 +70,7 @@ function addToPlans(
 export function planTransfers<K>(
   period: PeriodDefinition<K>,
   dailies: readonly EndedDaily[],
-  destinations: readonly TransferDestination<K>[],
+  destinations: readonly Pick<PeriodArchive<K>, "id" | "key" | "isLocked" | "transferredDateKeys">[],
   now: Date,
 ): readonly TransferPlan[] {
   return listEndedDailies(dailies, now).reduce<readonly TransferPlan[]>(function (
@@ -85,19 +81,23 @@ export function planTransfers<K>(
     const destination = destinations.find(function (candidate) {
       return period.compare(candidate.key, dailyKey) === 0;
     });
-    const title = formatDailyTitleFromDateKey(daily.dateKey);
-
     if (
       destination === undefined ||
       destination.isLocked ||
-      destination.headingTitles.includes(title)
+      isTransferred(destination, daily.dateKey)
     ) {
       return plans;
     }
 
     return addToPlans(
       plans,
-      { periodType: period.type, destinationPageId: destination.id, title, dailyPageIds: [] },
+      {
+        periodType: period.type,
+        destinationPageId: destination.id,
+        dateKey: daily.dateKey,
+        title: formatDailyTitleFromDateKey(daily.dateKey),
+        dailyPageIds: [],
+      },
       daily.id,
     );
   }, []);

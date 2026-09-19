@@ -1,10 +1,12 @@
-import type { DailyPage, PeriodPage } from "../diary/page";
+import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
 import type { PeriodDefinition } from "../diary/period";
-import type { TransferDestination, TransferPlan } from "../diary/transfer-plan";
+import type { TransferPlan } from "../diary/transfer-plan";
 import type { DailyMarkdown } from "../diary/transfer-markdown";
 import type { NotionDiary } from "../notion/client";
 
+import { parseDailyTitleDateKey } from "../diary/daily-title";
 import { extractSectionTitles } from "../diary/markdown-section";
+import { hasRefsSection } from "../diary/refs";
 import {
   createTransferFallbackSection,
   createTransferSection,
@@ -15,43 +17,53 @@ import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { restoreExternalLinks } from "./external-links";
 
 export interface TransferResult<K> {
-  readonly destinations: readonly TransferDestination<K>[];
+  readonly archives: readonly PeriodArchive<K>[];
   readonly daysTransferred: number;
   readonly fallbackDates: readonly string[];
 }
 
-async function readHeadingTitles(
+const EMPTY_ARCHIVE_STATE = { transferredDateKeys: [], hasRefs: false } as const;
+
+// 転記状態は期間ページの本文から読む。日付見出しが転記済みの日、Refs 見出しが Refs の有無を表す。
+async function readArchiveState(
   diary: NotionDiary,
   pageId: string,
-): Promise<readonly string[]> {
-  const headingTitles = extractSectionTitles(await diary.getPageMarkdown(pageId));
+): Promise<Pick<PeriodArchive<unknown>, "transferredDateKeys" | "hasRefs">> {
+  const markdown = await diary.getPageMarkdown(pageId);
   await sleep(READ_INTERVAL_MS);
 
-  return headingTitles;
+  return {
+    transferredDateKeys: extractSectionTitles(markdown).flatMap(function (title) {
+      const dateKey = parseDailyTitleDateKey(title);
+      return dateKey === null ? [] : [dateKey];
+    }),
+    hasRefs: hasRefsSection(markdown),
+  };
 }
 
-async function listDestinations<K>(
+async function listArchives<K>(
   diary: NotionDiary,
   period: PeriodDefinition<K>,
   periodPages: readonly PeriodPage<K>[],
-  knownEmptyPageIds: readonly string[],
-): Promise<readonly TransferDestination<K>[]> {
-  let destinations: readonly TransferDestination<K>[] = [];
+  createdPageIds: readonly string[],
+): Promise<readonly PeriodArchive<K>[]> {
+  let archives: readonly PeriodArchive<K>[] = [];
 
   for (const page of periodPages) {
+    // この実行で作った空ページと、仕上げ工程の無い期間のロック済みページは読まなくても状態が決まる。
     const canSkipReading =
-      knownEmptyPageIds.includes(page.id) ||
+      createdPageIds.includes(page.id) ||
       (page.isLocked && !period.finalizesAfterLock);
-    destinations = [
-      ...destinations,
+    archives = [
+      ...archives,
       {
         ...page,
-        headingTitles: canSkipReading ? [] : await readHeadingTitles(diary, page.id),
+        ...(canSkipReading ? EMPTY_ARCHIVE_STATE : await readArchiveState(diary, page.id)),
       },
     ];
   }
 
-  return destinations;
+  return archives;
 }
 
 async function readDailyMarkdowns(
@@ -72,15 +84,15 @@ async function readDailyMarkdowns(
   return dailies;
 }
 
-// 転記できた日は見出しをメモリ上の転記先にも足し、同じ実行内のロック判定へ反映する。
+// 転記できた日はメモリ上の転記状態にも足し、同じ実行内のロック判定へ反映する。
 function recordTransferred<K>(
-  destinations: readonly TransferDestination<K>[],
+  archives: readonly PeriodArchive<K>[],
   plan: TransferPlan,
-): readonly TransferDestination<K>[] {
-  return destinations.map(function (destination) {
-    return destination.id === plan.destinationPageId
-      ? { ...destination, headingTitles: [...destination.headingTitles, plan.title] }
-      : destination;
+): readonly PeriodArchive<K>[] {
+  return archives.map(function (archive) {
+    return archive.id === plan.destinationPageId
+      ? { ...archive, transferredDateKeys: [...archive.transferredDateKeys, plan.dateKey] }
+      : archive;
   });
 }
 
@@ -119,10 +131,10 @@ export async function transferEndedDailies<K>(
   dailies: readonly DailyPage[],
   periodPages: readonly PeriodPage<K>[],
   now: Date,
-  knownEmptyPageIds: readonly string[],
+  createdPageIds: readonly string[],
 ): Promise<TransferResult<K>> {
-  let destinations = await listDestinations(diary, period, periodPages, knownEmptyPageIds);
-  const plans = planTransfers(period, dailies, destinations, now);
+  let archives = await listArchives(diary, period, periodPages, createdPageIds);
+  const plans = planTransfers(period, dailies, archives, now);
   let fallbackDates: readonly string[] = [];
 
   for (const plan of plans) {
@@ -132,8 +144,8 @@ export async function transferEndedDailies<K>(
       fallbackDates = [...fallbackDates, plan.title];
     }
 
-    destinations = recordTransferred(destinations, plan);
+    archives = recordTransferred(archives, plan);
   }
 
-  return { destinations, daysTransferred: plans.length, fallbackDates };
+  return { archives, daysTransferred: plans.length, fallbackDates };
 }

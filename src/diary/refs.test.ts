@@ -136,32 +136,40 @@ describe("buildRefsSection", () => {
 });
 
 describe("shouldGenerateRefs", () => {
-  const pastMonthly = { key: { year: 2026, month: 6 }, isLocked: false };
   const now = new Date("2026-07-22T03:00:00.000Z");
+  const dailies = [{ dateKey: "2026-06-01" }, { dateKey: "2026-06-02" }];
+  const pastMonthly = {
+    key: { year: 2026, month: 6 },
+    isLocked: false,
+    transferredDateKeys: ["2026-06-01", "2026-06-02"],
+    hasRefs: false,
+  };
 
-  it("Refs見出しがあれば生成しない", () => {
-    // 見出しを冪等キーとして重複生成を防ぐことを保証する。
-    expect(shouldGenerateRefs(pastMonthly, ["Refs"], now, true)).toBe(false);
+  it("Refs があれば生成しない", () => {
+    // Refs の有無を冪等キーとして重複生成を防ぐことを保証する。
+    expect(shouldGenerateRefs({ ...pastMonthly, hasRefs: true }, dailies, now)).toBe(false);
   });
 
-  it("未ロックの過去月はロック可能になった場合だけ生成する", () => {
-    // 日次転記が完了する前にはRefsを確定せず、ロック直前だけ生成することを保証する。
-    expect(shouldGenerateRefs(pastMonthly, [], now, false)).toBe(false);
-    expect(shouldGenerateRefs(pastMonthly, [], now, true)).toBe(true);
-  });
-
-  it("今月のMonthlyは生成対象にしない", () => {
-    // 進行中の月へRefsを生成しないことを保証する。
+  it("未ロックの過去月は全日の転記が揃った場合だけ生成する", () => {
+    // 日次転記が完了する前には Refs を確定せず、ロック直前だけ生成することを保証する。
     expect(
-      shouldGenerateRefs({ key: { year: 2026, month: 7 }, isLocked: false }, [], now, true),
+      shouldGenerateRefs({ ...pastMonthly, transferredDateKeys: ["2026-06-01"] }, dailies, now),
+    ).toBe(false);
+    expect(shouldGenerateRefs(pastMonthly, dailies, now)).toBe(true);
+  });
+
+  it("今月の Monthly は生成対象にしない", () => {
+    // 進行中の月へ Refs を生成しないことを保証する。
+    expect(
+      shouldGenerateRefs({ ...pastMonthly, key: { year: 2026, month: 7 } }, dailies, now),
     ).toBe(false);
   });
 
-  it("Refsの無いロック済み過去月はロック計画と無関係に生成対象にする", () => {
-    // 外部要因でRefsより先にロックされた月も定期実行だけで補完できることを保証する。
-    const locked = { ...pastMonthly, isLocked: true };
+  it("Refs の無いロック済み過去月は転記状態と無関係に生成対象にする", () => {
+    // 外部要因で Refs より先にロックされた月も定期実行だけで補完できることを保証する。
+    const locked = { ...pastMonthly, isLocked: true, transferredDateKeys: [] };
 
-    expect(shouldGenerateRefs(locked, [], now, false)).toBe(true);
-    expect(shouldGenerateRefs(locked, ["Refs"], now, false)).toBe(false);
+    expect(shouldGenerateRefs(locked, dailies, now)).toBe(true);
+    expect(shouldGenerateRefs({ ...locked, hasRefs: true }, dailies, now)).toBe(false);
   });
 });

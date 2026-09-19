@@ -1,8 +1,7 @@
 import type { PageAction } from "./daily";
-import type { DailyPage, PeriodPage, PeriodType } from "./page";
+import type { DailyPage, PeriodArchive, PeriodPage, PeriodType } from "./page";
 
 import { PAGE_ACTION_TYPE } from "./daily";
-import { formatDailyTitleFromDateKey } from "./daily-title";
 import { dateKeyToDate, getJstDateKey } from "./jst-date";
 
 // Weekly / Monthly に共通する「期間」の規則。期間キー K（ISO 週や暦月）の求め方・比較・タイトル整形を定義する。
@@ -30,25 +29,53 @@ function isSameKey<K>(period: PeriodDefinition<K>, left: K, right: K): boolean {
   return period.compare(left, right) === 0;
 }
 
+export function isTransferred<K>(
+  archive: Pick<PeriodArchive<K>, "transferredDateKeys">,
+  dateKey: string,
+): boolean {
+  return archive.transferredDateKeys.includes(dateKey);
+}
+
+// 期間内の終了済み Daily がすべて転記されているか。過去の期間だけが完了し得る。
+export function isFullyTransferred<K>(
+  period: PeriodDefinition<K>,
+  archive: Pick<PeriodArchive<K>, "key" | "transferredDateKeys">,
+  dailies: readonly Pick<DailyPage, "dateKey">[],
+  now: Date,
+): boolean {
+  if (period.compare(archive.key, period.keyOfDate(now)) !== -1) {
+    return false;
+  }
+
+  const todayKey = getJstDateKey(now);
+
+  return dailies.every(function (daily) {
+    const isEndedInPeriod =
+      daily.dateKey < todayKey &&
+      isSameKey(period, keyOfDateKey(period, daily.dateKey), archive.key);
+
+    return !isEndedInPeriod || isTransferred(archive, daily.dateKey);
+  });
+}
+
+// 期間ページへの操作を決める。ロックは「期間が終わり、転記が揃った」ときに限る、という不変条件をここで守る。
 export function decidePeriodPageAction<K>(
   period: PeriodDefinition<K>,
-  page: Pick<PeriodPage<K>, "key" | "title" | "isLocked">,
+  archive: Pick<PeriodArchive<K>, "key" | "title" | "isLocked" | "transferredDateKeys">,
+  dailies: readonly Pick<DailyPage, "dateKey">[],
   now: Date,
-  canLock: boolean,
 ): PageAction {
-  const comparison = period.compare(page.key, period.keyOfDate(now));
-
-  if (comparison === 1) {
+  if (period.compare(archive.key, period.keyOfDate(now)) === 1) {
     return { type: PAGE_ACTION_TYPE.none };
   }
 
-  const expectedTitle = period.formatTitle(page.key);
+  const expectedTitle = period.formatTitle(archive.key);
 
-  if (page.title !== expectedTitle) {
+  if (archive.title !== expectedTitle) {
     return { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
   }
 
-  if (comparison === -1 && !page.isLocked && canLock) {
+  if (!archive.isLocked && isFullyTransferred(period, archive, dailies, now)) {
     return { type: PAGE_ACTION_TYPE.lock };
   }
 
@@ -83,27 +110,4 @@ export function planMissingPeriodPages<K>(
     .toSorted(function (left, right) {
       return period.compare(left.key, right.key);
     });
-}
-
-// 期間内の終了済み Daily がすべて転記されている（見出しが揃っている）ときだけロックできる。
-export function shouldLockPeriodPage<K>(
-  period: PeriodDefinition<K>,
-  page: Pick<PeriodPage<K>, "key" | "isLocked">,
-  dailies: readonly Pick<DailyPage, "dateKey">[],
-  headingTitles: readonly string[],
-  now: Date,
-): boolean {
-  if (page.isLocked || period.compare(page.key, period.keyOfDate(now)) !== -1) {
-    return false;
-  }
-
-  const todayKey = getJstDateKey(now);
-
-  return dailies.every(function (daily) {
-    const isEndedInPeriod =
-      daily.dateKey < todayKey &&
-      isSameKey(period, keyOfDateKey(period, daily.dateKey), page.key);
-
-    return !isEndedInPeriod || headingTitles.includes(formatDailyTitleFromDateKey(daily.dateKey));
-  });
 }

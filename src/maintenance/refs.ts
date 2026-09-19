@@ -1,11 +1,15 @@
-import type { MonthlyPage } from "../diary/page";
-import type { TransferDestination } from "../diary/transfer-plan";
+import type { CalendarMonth } from "../diary/calendar-month";
+import type { DailyPage, PeriodArchive } from "../diary/page";
 import type { NotionDiary } from "../notion/client";
 import type { RefTitleResolutionCounts } from "./ref-title-lookup";
 
-import { extractSectionTitles } from "../diary/markdown-section";
 import { monthly } from "../diary/monthly";
-import { buildRefsSection, collectRefs, shouldGenerateRefs } from "../diary/refs";
+import {
+  buildRefsSection,
+  collectRefs,
+  hasRefsSection,
+  shouldGenerateRefs,
+} from "../diary/refs";
 import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { restoreExternalLinks } from "./external-links";
 import { lookupRefTitles } from "./ref-title-lookup";
@@ -28,13 +32,13 @@ function addCounts(
 }
 
 function listCandidates(
-  destinations: readonly TransferDestination<MonthlyPage["key"]>[],
-  lockPlannedPageIds: readonly string[],
+  archives: readonly PeriodArchive<CalendarMonth>[],
+  dailies: readonly DailyPage[],
   now: Date,
-): readonly MonthlyPage[] {
-  return destinations
-    .filter(function (page) {
-      return shouldGenerateRefs(page, page.headingTitles, now, lockPlannedPageIds.includes(page.id));
+): readonly PeriodArchive<CalendarMonth>[] {
+  return archives
+    .filter(function (archive) {
+      return shouldGenerateRefs(archive, dailies, now);
     })
     .toSorted(function (left, right) {
       const comparison = monthly.compare(left.key, right.key);
@@ -45,25 +49,19 @@ function listCandidates(
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
   diary: NotionDiary,
-  destinations: readonly TransferDestination<MonthlyPage["key"]>[],
-  lockPlannedPageIds: readonly string[],
+  archives: readonly PeriodArchive<CalendarMonth>[],
+  dailies: readonly DailyPage[],
   now: Date,
 ): Promise<RefsResult> {
-  const candidates = listCandidates(destinations, lockPlannedPageIds, now);
+  const candidates = listCandidates(archives, dailies, now);
   let generated = 0;
   let titleResolution: RefTitleResolutionCounts = { http: 0, anchor: 0, fallback: 0 };
 
-  for (const page of candidates) {
-    const markdown = await diary.getPageMarkdown(page.id);
-    // 事前判定に使った見出し一覧は取得時点の値なので、書き込み直前に読み直した本文で Refs の有無を再判定し、二重生成を防ぐ。
-    const stillNeeded = shouldGenerateRefs(
-      page,
-      extractSectionTitles(markdown),
-      now,
-      lockPlannedPageIds.includes(page.id),
-    );
+  for (const archive of candidates) {
+    const markdown = await diary.getPageMarkdown(archive.id);
 
-    if (!stillNeeded) {
+    // 事前判定に使った転記状態は取得時点の値なので、書き込み直前に読み直した本文で Refs の有無を再確認し、二重生成を防ぐ。
+    if (hasRefsSection(markdown)) {
       continue;
     }
 
@@ -75,7 +73,7 @@ export async function generateRefs(
     titleResolution = addCounts(titleResolution, resolved.counts);
 
     if (section !== "") {
-      await diary.appendMarkdown(page.id, section);
+      await diary.appendMarkdown(archive.id, section);
       await sleep(WRITE_INTERVAL_MS);
       generated += 1;
     }

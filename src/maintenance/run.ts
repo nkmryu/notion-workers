@@ -41,7 +41,7 @@ export async function runMaintenance(
         templateId: config.monthlyTemplateId,
         // 閉じる前に、その月の外部 URL を Refs としてまとめる。
         finalize(input) {
-          return generateRefs(diary, input.destinations, input.lockPlannedPageIds, input.now);
+          return generateRefs(diary, input.archives, input.dailies, input.now);
         },
       },
       dailies,

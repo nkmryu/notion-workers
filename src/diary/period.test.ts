@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { monthly } from "./monthly";
 import {
   decidePeriodPageAction,
+  isFullyTransferred,
   planMissingPeriodPages,
-  shouldLockPeriodPage,
 } from "./period";
 import { weekly } from "./weekly";
 
@@ -16,51 +16,73 @@ function daily(dateKey: string): { readonly dateKey: string } {
 }
 
 describe("Weekly のアクション決定", () => {
+  const lastWeek = {
+    key: { year: 2026, week: 29 },
+    title: "26.W29",
+    isLocked: false,
+    transferredDateKeys: ["2026-07-13", "2026-07-14"],
+  };
+  const lastWeekDailies = [daily("2026-07-13"), daily("2026-07-14")];
+
   it("今週の週次ページをリネームする", () => {
     // 今週の週次ページに期待する週次タイトルを指定することを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 30 }, title: "新規ページ", isLocked: false },
+        { key: { year: 2026, week: 30 }, title: "新規ページ", isLocked: false, transferredDateKeys: [] },
+        [],
         now,
-        false,
       ),
     ).toEqual({ type: "rename", title: "26.W30" });
   });
 
   it("今週でリネーム済みの週次ページには何もしない", () => {
-    // 週次ページへ不要な PATCH を重ねないことを保証する。
+    // 進行中の週は転記が揃っていてもロックせず、不要な PATCH も重ねないことを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 30 }, title: "26.W30", isLocked: false },
+        {
+          key: { year: 2026, week: 30 },
+          title: "26.W30",
+          isLocked: false,
+          transferredDateKeys: ["2026-07-20"],
+        },
+        [daily("2026-07-20")],
         now,
-        false,
       ),
     ).toEqual({ type: "none" });
   });
 
-  it("先週の未ロックの週次ページをロックする", () => {
-    // 転記完了が確認された過去週だけをロック対象にできることを保証する。
-    expect(
-      decidePeriodPageAction(
-        weekly,
-        { key: { year: 2026, week: 29 }, title: "26.W29", isLocked: false },
-        now,
-        true,
-      ),
-    ).toEqual({ type: "lock" });
+  it("先週の全 daily が転記済みなら未ロックの週次ページをロックする", () => {
+    // 過去週の全日の転記が揃ったときだけ閉じることを保証する。
+    expect(decidePeriodPageAction(weekly, lastWeek, lastWeekDailies, now)).toEqual({
+      type: "lock",
+    });
   });
 
-  it("先週でも転記が完了していなければロックしない", () => {
-    // 過去週という条件だけで未完了の週次ページを閉じないことを保証する。
+  it("先週でも未転記の daily が残っていればロックしない", () => {
+    // 1 日でも転記が欠けていれば次回転記可能な状態を保つことを保証する。
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 29 }, title: "26.W29", isLocked: false },
+        { ...lastWeek, transferredDateKeys: ["2026-07-13"] },
+        lastWeekDailies,
         now,
-        false,
       ),
+    ).toEqual({ type: "none" });
+  });
+
+  it("タイトルが期待と違えばロック可能でもまずリネームする", () => {
+    // テンプレートが上書きしたタイトルを、閉じる前に収束させることを保証する。
+    expect(
+      decidePeriodPageAction(weekly, { ...lastWeek, title: "" }, lastWeekDailies, now),
+    ).toEqual({ type: "rename", title: "26.W29" });
+  });
+
+  it("ロック済みの週次ページには何もしない", () => {
+    // ロック済みページへ PATCH を重ねないことを保証する。
+    expect(
+      decidePeriodPageAction(weekly, { ...lastWeek, isLocked: true }, lastWeekDailies, now),
     ).toEqual({ type: "none" });
   });
 
@@ -69,9 +91,9 @@ describe("Weekly のアクション決定", () => {
     expect(
       decidePeriodPageAction(
         weekly,
-        { key: { year: 2026, week: 31 }, title: "仮", isLocked: false },
+        { key: { year: 2026, week: 31 }, title: "仮", isLocked: false, transferredDateKeys: [] },
+        [],
         now,
-        true,
       ),
     ).toEqual({ type: "none" });
   });
@@ -161,64 +183,36 @@ describe("Weekly の作成計画", () => {
   });
 });
 
-describe("Weekly のロック判定", () => {
-  const weeklyPage = { key: { year: 2026, week: 29 }, isLocked: false };
+describe("Weekly の転記完了判定", () => {
+  const lastWeek = { key: { year: 2026, week: 29 }, transferredDateKeys: ["2026-07-13", "2026-07-14"] };
   const dailies = [daily("2026-07-13"), daily("2026-07-14")];
 
-  it("その週の全 daily が転記済みなら過去週をロックする", () => {
-    // 過去週の全期待見出しが存在するときだけ完了と判定することを保証する。
-    expect(
-      shouldLockPeriodPage(
-        weekly,
-        weeklyPage,
-        dailies,
-        ["26.07.13（月）", "26.07.14（火）"],
-        now,
-      ),
-    ).toBe(true);
+  it("その週の全 daily が転記済みなら完了", () => {
+    // 過去週の全日が転記済みのときだけ完了と判定することを保証する。
+    expect(isFullyTransferred(weekly, lastWeek, dailies, now)).toBe(true);
   });
 
-  it("未転記の daily が残る過去週をロックしない", () => {
-    // 1日でも期待見出しが欠けていれば次回転記可能な状態を保つことを保証する。
-    expect(shouldLockPeriodPage(weekly, weeklyPage, dailies, ["26.07.13（月）"], now)).toBe(
-      false,
-    );
-  });
-
-  it("別の週の daily は完了条件に含めない", () => {
-    // 他の週の未転記が対象週のロックを妨げないことを保証する。
+  it("未転記の daily が残る過去週は未完了", () => {
+    // 1 日でも転記が欠けていれば未完了とすることを保証する。
     expect(
-      shouldLockPeriodPage(
-        weekly,
-        weeklyPage,
-        [...dailies, daily("2026-07-06")],
-        ["26.07.13（月）", "26.07.14（火）"],
-        now,
-      ),
-    ).toBe(true);
-  });
-
-  it("全 daily が転記済みでも今週はロックしない", () => {
-    // 進行中の週は転記完了数にかかわらず閉じないことを保証する。
-    expect(
-      shouldLockPeriodPage(
-        weekly,
-        { key: { year: 2026, week: 30 }, isLocked: false },
-        [daily("2026-07-20")],
-        ["26.07.20（月）"],
-        now,
-      ),
+      isFullyTransferred(weekly, { ...lastWeek, transferredDateKeys: ["2026-07-13"] }, dailies, now),
     ).toBe(false);
   });
 
-  it("ロック済みの週次ページは再ロックしない", () => {
-    // ロック済みページへ PATCH を重ねないことを保証する。
+  it("別の週の daily は完了条件に含めない", () => {
+    // 他の週の未転記が対象週の完了判定を妨げないことを保証する。
+    expect(isFullyTransferred(weekly, lastWeek, [...dailies, daily("2026-07-06")], now)).toBe(
+      true,
+    );
+  });
+
+  it("全 daily が転記済みでも今週は未完了", () => {
+    // 進行中の週は転記数にかかわらず完了扱いしないことを保証する。
     expect(
-      shouldLockPeriodPage(
+      isFullyTransferred(
         weekly,
-        { ...weeklyPage, isLocked: true },
-        dailies,
-        ["26.07.13（月）", "26.07.14（火）"],
+        { key: { year: 2026, week: 30 }, transferredDateKeys: ["2026-07-20"] },
+        [daily("2026-07-20")],
         now,
       ),
     ).toBe(false);
@@ -281,36 +275,30 @@ describe("Monthly の作成計画", () => {
   });
 });
 
-describe("Monthly のアクション決定とロック判定", () => {
-  const monthlyPage = { key: { year: 2026, month: 6 }, title: "26.M06", isLocked: false };
+describe("Monthly のアクション決定", () => {
+  const lastMonth = {
+    key: { year: 2026, month: 6 },
+    title: "26.M06",
+    isLocked: false,
+    transferredDateKeys: ["2026-06-01", "2026-06-02"],
+  };
   const dailies = [daily("2026-06-01"), daily("2026-06-02")];
 
-  it("全 Daily 見出しが揃った過去月をロックする", () => {
-    // 終了月の全日が転記済みの場合だけロック可能になることを保証する。
-    expect(
-      shouldLockPeriodPage(
-        monthly,
-        monthlyPage,
-        dailies,
-        ["26.06.01（月）", "26.06.02（火）"],
-        now,
-      ),
-    ).toBe(true);
-    expect(decidePeriodPageAction(monthly, monthlyPage, now, true)).toEqual({ type: "lock" });
+  it("全 Daily が転記済みの過去月をロックする", () => {
+    // 終了月の全日が転記済みの場合だけ閉じることを保証する。
+    expect(decidePeriodPageAction(monthly, lastMonth, dailies, now)).toEqual({ type: "lock" });
   });
 
   it("未転記 Daily がある過去月をロックしない", () => {
-    // 期待見出しが欠ける月を次回転記可能な状態に保つことを保証する。
-    expect(shouldLockPeriodPage(monthly, monthlyPage, dailies, ["26.06.01（月）"], now)).toBe(
-      false,
-    );
-  });
-
-  it("今月は全見出しが揃ってもロックしない", () => {
-    // 進行中の暦月を完了扱いしないことを保証する。
+    // 転記が欠ける月を次回転記可能な状態に保つことを保証する。
     expect(
-      shouldLockPeriodPage(monthly, { key: { year: 2026, month: 7 }, isLocked: false }, [], [], now),
-    ).toBe(false);
+      decidePeriodPageAction(
+        monthly,
+        { ...lastMonth, transferredDateKeys: ["2026-06-01"] },
+        dailies,
+        now,
+      ),
+    ).toEqual({ type: "none" });
   });
 
   it("今月の Monthly を期待タイトルへリネームする", () => {
@@ -318,9 +306,9 @@ describe("Monthly のアクション決定とロック判定", () => {
     expect(
       decidePeriodPageAction(
         monthly,
-        { key: { year: 2026, month: 7 }, title: "テンプレート", isLocked: false },
+        { key: { year: 2026, month: 7 }, title: "テンプレート", isLocked: false, transferredDateKeys: [] },
+        [],
         now,
-        false,
       ),
     ).toEqual({ type: "rename", title: "26.M07" });
   });

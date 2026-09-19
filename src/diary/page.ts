@@ -43,6 +43,13 @@ export interface PeriodPage<K> {
 export type WeeklyPage = PeriodPage<IsoWeek>;
 export type MonthlyPage = PeriodPage<CalendarMonth>;
 
+// 期間ページに、その時点の転記状態（どの日を転記済みか・Refs があるか）を添えたもの。
+// ロックと Refs の判断はこの状態だけで下せる。
+export interface PeriodArchive<K> extends PeriodPage<K> {
+  readonly transferredDateKeys: readonly string[];
+  readonly hasRefs: boolean;
+}
+
 // 日誌データベースの全ページを種別ごとに分けたもの。メモはどの処理も触らないので含めない。
 export interface DiaryPages {
   readonly dailies: readonly DailyPage[];

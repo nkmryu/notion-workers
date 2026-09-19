@@ -1,21 +1,16 @@
-import type { DailyPage, PeriodPage } from "../diary/page";
+import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
 import type { PeriodCreationPlan, PeriodDefinition } from "../diary/period";
-import type { TransferDestination } from "../diary/transfer-plan";
 import type { NotionDiary } from "../notion/client";
 
 import { PAGE_ACTION_TYPE } from "../diary/daily";
-import {
-  decidePeriodPageAction,
-  planMissingPeriodPages,
-  shouldLockPeriodPage,
-} from "../diary/period";
+import { decidePeriodPageAction, planMissingPeriodPages } from "../diary/period";
 import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { transferEndedDailies } from "./transfer";
 
 // ロック前の仕上げ（Monthly の Refs）。ロック済みで仕上げが無いページの補完も担う。
 export interface FinalizeInput<K> {
-  readonly destinations: readonly TransferDestination<K>[];
-  readonly lockPlannedPageIds: readonly string[];
+  readonly archives: readonly PeriodArchive<K>[];
+  readonly dailies: readonly DailyPage[];
   readonly now: Date;
 }
 
@@ -75,18 +70,11 @@ export async function maintainPeriod<K, F>(
       return page.id;
     }),
   );
-  const actions = transfer.destinations.flatMap(function (page) {
-    const canLock = shouldLockPeriodPage(period, page, dailies, page.headingTitles, now);
-    const action = decidePeriodPageAction(period, page, now, canLock);
-    return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page, action }];
+  const actions = transfer.archives.flatMap(function (archive) {
+    const action = decidePeriodPageAction(period, archive, dailies, now);
+    return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page: archive, action }];
   });
-  const finalized = await maintenance.finalize({
-    destinations: transfer.destinations,
-    lockPlannedPageIds: actions.flatMap(function ({ page, action }) {
-      return action.type === PAGE_ACTION_TYPE.lock ? [page.id] : [];
-    }),
-    now,
-  });
+  const finalized = await maintenance.finalize({ archives: transfer.archives, dailies, now });
   let renames = 0;
   let locks = 0;
 

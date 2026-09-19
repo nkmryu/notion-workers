@@ -1,9 +1,12 @@
-import type { MonthlyPage } from "./page";
+import type { DailyPage, PeriodArchive } from "./page";
+import type { CalendarMonth } from "./calendar-month";
 import type { CollectedRef, ResolvedRef } from "./ref-title";
 
 import { createSectionHeader, stripFencedCode } from "./markdown-section";
+import { extractSectionTitles } from "./markdown-section";
 import { monthly } from "./monthly";
 import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
+import { isFullyTransferred } from "./period";
 
 export const REFS_HEADING_TITLE = "Refs";
 // 画像 "![alt](url)" は "!" で始まるため除き、本文のリンクだけを拾う。
@@ -105,18 +108,21 @@ export function buildRefsSection(refs: readonly ResolvedRef[]): string {
   return `${createSectionHeader(REFS_HEADING_TITLE)}${bullets.join("\n")}\n`;
 }
 
+export function hasRefsSection(markdown: string): boolean {
+  return extractSectionTitles(markdown).includes(REFS_HEADING_TITLE);
+}
+
 // Refs は月が閉じる直前に一度だけ作る。ロック済みで Refs の無い過去月は、閉じ忘れとして補完する。
 export function shouldGenerateRefs(
-  page: Pick<MonthlyPage, "key" | "isLocked">,
-  headingTitles: readonly string[],
+  archive: Pick<PeriodArchive<CalendarMonth>, "key" | "isLocked" | "transferredDateKeys" | "hasRefs">,
+  dailies: readonly Pick<DailyPage, "dateKey">[],
   now: Date,
-  canLock: boolean,
 ): boolean {
-  if (headingTitles.includes(REFS_HEADING_TITLE)) {
+  if (archive.hasRefs) {
     return false;
   }
 
-  const isPastMonth = monthly.compare(page.key, monthly.keyOfDate(now)) === -1;
+  const isPastMonth = monthly.compare(archive.key, monthly.keyOfDate(now)) === -1;
 
-  return isPastMonth && (page.isLocked || canLock);
+  return isPastMonth && (archive.isLocked || isFullyTransferred(monthly, archive, dailies, now));
 }
