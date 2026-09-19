@@ -1,0 +1,36 @@
+name: Maintain Notion diary pages
+
+on:
+  schedule:
+    # cron は UTC 指定。JST では 0:05 と 7:00 に実行する。
+    - cron: "5 15 * * *"
+    - cron: "0 22 * * *"
+
+  workflow_dispatch:
+
+# 同時に走ると同じ週・月のページを二重作成し得るため、実行を直列化する。
+concurrency:
+  group: maintain
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run maintain
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
+          NOTION_TEMPLATE_ID: 3a1372a1dbcd8014b380e2c11c3601d6
+          NOTION_WEEKLY_TEMPLATE_ID: 3a1372a1dbcd801381e1e6db3c2adaa6
+          NOTION_MONTHLY_TEMPLATE_ID: 3a2372a1dbcd80e9b00decd7e9c2c614
