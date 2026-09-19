@@ -3,17 +3,12 @@ import type { MaintenanceSummary } from "./maintenance/run";
 import { loadConfig } from "./config";
 import { runMaintenance } from "./maintenance/run";
 
-function formatSummary(summary: MaintenanceSummary): string {
+function formatSummary({ daily, weekly, monthly }: MaintenanceSummary): string {
   return [
-    `Daily作成${summary.dailyCreated}件`,
-    `Weekly作成${summary.weekliesCreated}件`,
-    `Monthly作成${summary.monthliesCreated}件`,
-    `週次転記${summary.weeklyDaysTransferred}日（フォールバック${summary.weeklyFallbackDates.length}日）`,
-    `月次転記${summary.monthlyDaysTransferred}日（フォールバック${summary.monthlyFallbackDates.length}日）`,
-    `Refs生成${summary.refsGenerated}件`,
-    `リネーム${summary.renames}件`,
-    `ロック${summary.locks}件`,
-  ].join(" / ");
+    `Daily: 作成${daily.created} / リネーム${daily.renames} / ロック${daily.locks}`,
+    `Weekly: 作成${weekly.created} / 転記${weekly.daysTransferred}日（省略${weekly.fallbackDates.length}） / リネーム${weekly.renames} / ロック${weekly.locks}`,
+    `Monthly: 作成${monthly.created} / 転記${monthly.daysTransferred}日（省略${monthly.fallbackDates.length}） / Refs${monthly.finalized.generated} / リネーム${monthly.renames} / ロック${monthly.locks}`,
+  ].join("\n");
 }
 
 async function main(): Promise<void> {
@@ -21,12 +16,12 @@ async function main(): Promise<void> {
   console.log(formatSummary(summary));
 
   const fallbackDates = new Set([
-    ...summary.weeklyFallbackDates,
-    ...summary.monthlyFallbackDates,
+    ...summary.weekly.fallbackDates,
+    ...summary.monthly.fallbackDates,
   ]);
 
   if (fallbackDates.size > 0) {
-    console.log(`転記フォールバック対象: ${[...fallbackDates].join(", ")}`);
+    console.log(`転記を省略した日（元ページを参照）: ${[...fallbackDates].join(", ")}`);
   }
 }
 

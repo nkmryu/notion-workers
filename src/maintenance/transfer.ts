@@ -21,7 +21,7 @@ export interface TransferResult<K> {
   readonly fallbackDates: readonly string[];
 }
 
-export async function readHeadingTitles(
+async function readHeadingTitles(
   diary: NotionDiary,
   pageId: string,
 ): Promise<readonly string[]> {

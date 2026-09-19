@@ -4,7 +4,7 @@ Notion の日誌データベースを定期的に整える GitHub Actions ジョ
 
 ## 定期処理の内容
 
-`npm run maintain`（`src/maintain.ts`）を 1 回実行すると、次の順に処理します。
+`npm run maintain`（`src/main.ts`）を 1 回実行すると、全ページを 1 回取得したあと Daily → Weekly → Monthly の順に、それぞれを最新状態にします。
 
 1. 今日のページが無ければ作成し、タイトルを `26.07.22（水）` 形式にします。過去日の未ロック Daily はロックします。
 2. 終了した ISO 週（今週より前）に日次ページがあり週次ページが無ければ、古い週から順にすべて作成し、タイトルを `26.W30` 形式にします。進行中の週には作りません。
@@ -55,8 +55,10 @@ src/
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
   maintenance/       手続き。diary の判断に従って notion を呼ぶ
-    run.ts           1 実行の流れ（作成 → 転記 → Refs → リネーム・ロック）
-    page-creation.ts, transfer.ts, refs.ts, external-links.ts, ref-title-lookup.ts
+    run.ts           1 実行の流れ（Daily → Weekly → Monthly）
+    daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
+    period.ts        期間ページを最新状態にする（作成 → 転記 → 仕上げ → リネーム・ロック）
+    transfer.ts, refs.ts, external-links.ts, ref-title-lookup.ts
 ```
 
 Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定義（期間キーの求め方・比較・タイトル）だけで、判断と手続きは共通です。

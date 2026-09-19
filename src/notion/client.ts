@@ -14,17 +14,11 @@ import { parseDataSourceTitleKey, parseDiaryPage } from "./page";
 // メンテナンス処理が日誌データベースに対して必要とする操作。SDK の Client はこの背後に閉じ込める。
 export interface NotionDiary {
   readonly listPages: () => Promise<readonly DiaryPage[]>;
-  readonly getTitleKey: () => Promise<string>;
   readonly createPageFromTemplate: (input: {
     readonly templateId: string;
-    readonly titleKey: string;
     readonly title: string;
   }) => Promise<string>;
-  readonly renamePage: (
-    pageId: string,
-    titleKey: string,
-    title: string,
-  ) => Promise<void>;
+  readonly renamePage: (pageId: string, title: string) => Promise<void>;
   readonly lockPage: (pageId: string) => Promise<void>;
   readonly getPageMarkdown: (pageId: string) => Promise<string>;
   readonly appendMarkdown: (pageId: string, content: string) => Promise<void>;
@@ -41,6 +35,23 @@ export function createNotionDiary(
   client: Client,
   dataSourceId: string,
 ): NotionDiary {
+  let titleKeyPromise: Promise<string> | null = null;
+
+  // タイトルプロパティ名は data source ごとに固定なので、1 実行で 1 回だけ取得する。
+  function getTitleKey(): Promise<string> {
+    titleKeyPromise ??= client.dataSources
+      .retrieve({ data_source_id: dataSourceId })
+      .then(function (dataSource) {
+        if (!isFullDataSource(dataSource)) {
+          throw new Error("data source の詳細を取得できません");
+        }
+
+        return parseDataSourceTitleKey(dataSource);
+      });
+
+    return titleKeyPromise;
+  }
+
   return {
     async listPages() {
       // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
@@ -52,22 +63,10 @@ export function createNotionDiary(
       return rows.map(parseDiaryPage);
     },
 
-    async getTitleKey() {
-      const dataSource = await client.dataSources.retrieve({
-        data_source_id: dataSourceId,
-      });
-
-      if (!isFullDataSource(dataSource)) {
-        throw new Error("data source の詳細を取得できません");
-      }
-
-      return parseDataSourceTitleKey(dataSource);
-    },
-
-    async createPageFromTemplate({ templateId, titleKey, title }) {
+    async createPageFromTemplate({ templateId, title }) {
       const page = await client.pages.create({
         parent: { type: "data_source_id", data_source_id: dataSourceId },
-        properties: { [titleKey]: createTitleProperty(title) },
+        properties: { [await getTitleKey()]: createTitleProperty(title) },
         template: {
           type: "template_id",
           template_id: templateId,
@@ -78,10 +77,10 @@ export function createNotionDiary(
       return page.id;
     },
 
-    async renamePage(pageId, titleKey, title) {
+    async renamePage(pageId, title) {
       await client.pages.update({
         page_id: pageId,
-        properties: { [titleKey]: createTitleProperty(title) },
+        properties: { [await getTitleKey()]: createTitleProperty(title) },
       });
     },
 
