@@ -111,6 +111,12 @@ npm test
 
 実行結果は GitHub Actions の各 run のログで確認します。処理の末尾に作成・転記・リネーム・ロックの件数を 1 行で出力します。
 
+## 日付の扱い
+
+日付は `Temporal.PlainDate`（暦日）で扱い、実行開始時に「今日」を JST で 1 回だけ決めて全処理へ渡します。Notion の `created_time` は UTC の瞬間なので、JST の暦日へ落としてから使います。ISO 週は `PlainDate.weekOfYear` / `yearOfWeek`、月は `PlainYearMonth` です。
+
+Node 24 には Temporal が無いため `temporal-polyfill` を使っています。Node 26（Temporal 標準搭載）が 2026 年 10 月に LTS になったら、`.node-version` と workflow を 26 に上げ、`temporal-polyfill` の import と依存を外します。
+
 ## レート制限
 
 Notion API の平均 3 req/s 制限に合わせ、書き込みは 350ms、読み取りは 150ms の間隔を空けます。429 と 5xx は `@notionhq/client` が自動で再試行します。
