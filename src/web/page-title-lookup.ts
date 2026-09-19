@@ -1,36 +1,10 @@
-import type {
-  CollectedRef,
-  RefTitleSource,
-  ResolvedRef,
-} from "../diary/ref-title";
+import type { PageTitleSource } from "../maintenance/page-title-source";
 
-import {
-  extractHtmlTitle,
-  isHtmlContentType,
-  selectRefTitle,
-} from "../diary/ref-title";
+import { extractHtmlTitle, isHtmlContentType } from "./page-title";
 
 const FETCH_TIMEOUT_MS = 5_000;
 const MAX_HTML_BYTES = 64 * 1024;
 const USER_AGENT = "notion-workers/1.0";
-
-export interface RefTitleResolutionCounts {
-  readonly http: number;
-  readonly anchor: number;
-  readonly fallback: number;
-}
-
-export interface ResolvedRefsResult {
-  readonly refs: readonly ResolvedRef[];
-  readonly counts: RefTitleResolutionCounts;
-}
-
-function incrementCount(
-  counts: RefTitleResolutionCounts,
-  source: RefTitleSource,
-): RefTitleResolutionCounts {
-  return { ...counts, [source]: counts[source] + 1 };
-}
 
 async function readResponsePrefix(response: Response): Promise<string | null> {
   if (response.body === null) {
@@ -104,35 +78,15 @@ async function fetchRefTitle(url: string): Promise<string | null> {
   }
 }
 
-export async function lookupRefTitles(
-  refs: readonly CollectedRef[],
-): Promise<ResolvedRefsResult> {
-  let resolvedRefs: readonly ResolvedRef[] = [];
-  let counts: RefTitleResolutionCounts = {
-    http: 0,
-    anchor: 0,
-    fallback: 0,
-  };
-
-  for (const ref of refs) {
-    let httpTitle: string | null = null;
-
-    if (ref.anchorTitle === null) {
+// 外部サイト固有の障害（タイムアウト・非 HTML・エラー応答）で月次処理全体を止めず、null へ収束させる。
+export function createWebPageTitleSource(): PageTitleSource {
+  return {
+    async lookupTitle(url) {
       try {
-        httpTitle = await fetchRefTitle(ref.url);
+        return await fetchRefTitle(url);
       } catch {
-        // 外部サイト固有の障害で月次処理全体を止めず、URL表示へ収束させる。
-        httpTitle = null;
+        return null;
       }
-    }
-
-    const selected = selectRefTitle(ref, httpTitle);
-    resolvedRefs = [
-      ...resolvedRefs,
-      { url: selected.url, title: selected.title },
-    ];
-    counts = incrementCount(counts, selected.source);
-  }
-
-  return { refs: resolvedRefs, counts };
+    },
+  };
 }

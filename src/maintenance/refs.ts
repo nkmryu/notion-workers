@@ -2,23 +2,28 @@ import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "../diary/daily";
 import type { PeriodArchive } from "../diary/period";
+import type { CollectedRef, RefTitleSource, ResolvedRef } from "../diary/refs";
 import type { DiaryStore } from "./diary-store";
-import type { RefTitleResolutionCounts } from "./ref-title-lookup";
+import type { PageTitleSource } from "./page-title-source";
 
 import { monthly } from "../diary/monthly";
 import {
   buildRefsSection,
   collectRefs,
   hasRefsSection,
+  selectRefTitle,
   shouldGenerateRefs,
 } from "../diary/refs";
-import { lookupRefTitles } from "./ref-title-lookup";
+
+export type RefTitleResolutionCounts = Readonly<Record<RefTitleSource, number>>;
 
 export interface RefsResult {
   readonly generated: number;
   readonly processed: number;
   readonly titleResolution: RefTitleResolutionCounts;
 }
+
+const NO_RESOLUTION: RefTitleResolutionCounts = { http: 0, anchor: 0, fallback: 0 };
 
 function addCounts(
   left: RefTitleResolutionCounts,
@@ -29,6 +34,24 @@ function addCounts(
     anchor: left.anchor + right.anchor,
     fallback: left.fallback + right.fallback,
   };
+}
+
+// アンカーテキストが無い URL だけページタイトルを引き、出どころごとの件数も数える。
+async function resolveRefTitles(
+  titles: PageTitleSource,
+  refs: readonly CollectedRef[],
+): Promise<{ readonly refs: readonly ResolvedRef[]; readonly counts: RefTitleResolutionCounts }> {
+  let resolved: readonly ResolvedRef[] = [];
+  let counts = NO_RESOLUTION;
+
+  for (const ref of refs) {
+    const httpTitle = ref.anchorTitle === null ? await titles.lookupTitle(ref.url) : null;
+    const selected = selectRefTitle(ref, httpTitle);
+    resolved = [...resolved, { url: selected.url, title: selected.title }];
+    counts = { ...counts, [selected.source]: counts[selected.source] + 1 };
+  }
+
+  return { refs: resolved, counts };
 }
 
 function listCandidates(
@@ -49,13 +72,14 @@ function listCandidates(
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
   diary: DiaryStore,
+  titles: PageTitleSource,
   archives: readonly PeriodArchive<Temporal.PlainYearMonth>[],
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): Promise<RefsResult> {
   const candidates = listCandidates(archives, dailies, today);
   let generated = 0;
-  let titleResolution: RefTitleResolutionCounts = { http: 0, anchor: 0, fallback: 0 };
+  let titleResolution = NO_RESOLUTION;
 
   for (const archive of candidates) {
     const markdown = await diary.getPageMarkdown(archive.id);
@@ -65,7 +89,7 @@ export async function generateRefs(
       continue;
     }
 
-    const resolved = await lookupRefTitles(collectRefs(markdown));
+    const resolved = await resolveRefTitles(titles, collectRefs(markdown));
     const section = buildRefsSection(resolved.refs);
     titleResolution = addCounts(titleResolution, resolved.counts);
 

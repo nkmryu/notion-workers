@@ -23,7 +23,7 @@ export async function runMaintenance(
   config: Config,
   today: Temporal.PlainDate,
 ): Promise<MaintenanceSummary> {
-  const { diary } = config;
+  const { diary, pageTitles } = config;
   const dailies = await diary.listDailies();
 
   return {
@@ -42,7 +42,7 @@ export async function runMaintenance(
         templateId: config.monthlyTemplateId,
         // 閉じる前に、その月の外部 URL を Refs としてまとめる。
         beforeLock(input) {
-          return generateRefs(diary, input.archives, input.dailies, input.today);
+          return generateRefs(diary, pageTitles, input.archives, input.dailies, input.today);
         },
       },
       dailies,

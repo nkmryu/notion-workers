@@ -51,16 +51,20 @@ src/
     weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
     transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
     transfer-markdown.ts    転記セクションの Markdown 組み立て
-    refs.ts          Refs の収集とセクション組み立て
+    refs.ts          Refs の収集・タイトルの優先順位・セクション組み立て
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     jst.ts           JST の暦日（Temporal.PlainDate）への変換
-  maintenance/       手続き。diary の判断に従って DiaryStore を呼ぶ。notion/ には依存しない
+  web/               外部 Web ページの実装。PageTitleSource を fetch で実装する
+    page-title.ts    HTML からのタイトル抽出（og:title → <title>）
+    page-title-lookup.ts   タイムアウト・64KB 制限付きの取得。失敗は null に収束
+  maintenance/       手続き。diary の判断に従って 2 つのポートを呼ぶ。notion/ と web/ には依存しない
     diary-store.ts   DiaryStore ポート（種別ごとの一覧と 6 操作）と ContentRejectedError
+    page-title-source.ts   PageTitleSource ポート（URL → タイトル | null）
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
     daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
     period.ts        期間ページを最新状態にする（作成 → 転記 → ロック前の工程 → リネーム・ロック）
-    transfer.ts, refs.ts, ref-title-lookup.ts
+    transfer.ts, refs.ts
 ```
 
 Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定義（期間キーの求め方・比較・タイトル）だけで、判断と手続きは共通です。

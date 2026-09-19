@@ -1,19 +1,4 @@
-export interface CollectedRef {
-  readonly url: string;
-  readonly anchorTitle: string | null;
-}
-
-export interface ResolvedRef {
-  readonly url: string;
-  readonly title: string;
-}
-
-export type RefTitleSource = "anchor" | "http" | "fallback";
-
-export interface SelectedRefTitle extends ResolvedRef {
-  readonly source: RefTitleSource;
-}
-
+// 外部 Web ページの HTML からタイトルを取り出す。og:title を優先し、無ければ <title>。
 const MAX_TITLE_CHARACTERS = 200;
 const HTML_CONTENT_TYPES = ["text/html", "application/xhtml+xml"];
 
@@ -123,19 +108,4 @@ export function extractHtmlTitle(
   return titleMatch?.[1] === undefined
     ? null
     : normalizeTitle(titleMatch[1]);
-}
-
-export function selectRefTitle(
-  ref: CollectedRef,
-  httpTitle: string | null,
-): SelectedRefTitle {
-  if (ref.anchorTitle !== null) {
-    return { url: ref.url, title: ref.anchorTitle, source: "anchor" };
-  }
-
-  if (httpTitle !== null) {
-    return { url: ref.url, title: httpTitle, source: "http" };
-  }
-
-  return { url: ref.url, title: ref.url, source: "fallback" };
 }

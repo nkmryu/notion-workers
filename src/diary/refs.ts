@@ -2,11 +2,32 @@ import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "./daily";
 import type { PeriodArchive } from "./period";
-import type { CollectedRef, ResolvedRef } from "./ref-title";
 
 import { createSectionHeader, stripFencedCode } from "./markdown-section";
 import { extractSectionTitles } from "./markdown-section";
 import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
+
+export interface CollectedRef {
+  readonly url: string;
+  readonly anchorTitle: string | null;
+}
+
+export interface ResolvedRef {
+  readonly url: string;
+  readonly title: string;
+}
+
+// タイトルの出どころ。本文のアンカーテキストを最優先し、無ければ取得したページタイトル、それも無ければ URL 表示。
+export const REF_TITLE_SOURCE = {
+  anchor: "anchor",
+  http: "http",
+  fallback: "fallback",
+} as const;
+export type RefTitleSource = (typeof REF_TITLE_SOURCE)[keyof typeof REF_TITLE_SOURCE];
+
+export interface SelectedRefTitle extends ResolvedRef {
+  readonly source: RefTitleSource;
+}
 
 export const REFS_HEADING_TITLE = "Refs";
 // 画像 "![alt](url)" は "!" で始まるため除き、本文のリンクだけを拾う。
@@ -123,4 +144,19 @@ export function shouldGenerateRefs(
   }
 
   return archive.isLocked || archive.isFullyTransferred(dailies, today);
+}
+
+export function selectRefTitle(
+  ref: CollectedRef,
+  httpTitle: string | null,
+): SelectedRefTitle {
+  if (ref.anchorTitle !== null) {
+    return { url: ref.url, title: ref.anchorTitle, source: REF_TITLE_SOURCE.anchor };
+  }
+
+  if (httpTitle !== null) {
+    return { url: ref.url, title: httpTitle, source: REF_TITLE_SOURCE.http };
+  }
+
+  return { url: ref.url, title: ref.url, source: REF_TITLE_SOURCE.fallback };
 }

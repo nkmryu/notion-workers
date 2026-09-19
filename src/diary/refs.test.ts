@@ -9,6 +9,7 @@ import { PeriodArchive } from "./period";
 import {
   buildRefsSection,
   collectRefs,
+  selectRefTitle,
   shouldGenerateRefs,
 } from "./refs";
 
@@ -203,5 +204,34 @@ describe("shouldGenerateRefs", () => {
 
     expect(shouldGenerateRefs(archive(locked), dailies, today)).toBe(true);
     expect(shouldGenerateRefs(archive({ ...locked, hasRefs: true }), dailies, today)).toBe(false);
+  });
+});
+
+describe("selectRefTitle", () => {
+  const url = "https://example.com/article";
+
+  it("本文アンカーテキストをHTTP取得タイトルより優先する", () => {
+    // 本文で付けた名称が取得先ページのタイトルより優先されることを保証する。
+    expect(
+      selectRefTitle(
+        { url, anchorTitle: "本文の記事名" },
+        "HTTPの記事名",
+      ),
+    ).toEqual({ url, title: "本文の記事名", source: "anchor" });
+  });
+
+  it("アンカーが無ければHTTP取得タイトルを使う", () => {
+    // HTTPから抽出できた記事名をリンクテキストにすることを保証する。
+    expect(selectRefTitle({ url, anchorTitle: null }, "HTTPの記事名"))
+      .toEqual({ url, title: "HTTPの記事名", source: "http" });
+  });
+
+  it("タイトル解決に失敗した場合はURL文字列へフォールバックする", () => {
+    // 取得失敗があってもURL表示でRefsを生成できることを保証する。
+    expect(selectRefTitle({ url, anchorTitle: null }, null)).toEqual({
+      url,
+      title: url,
+      source: "fallback",
+    });
   });
 });
