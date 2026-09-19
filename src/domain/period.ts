@@ -136,21 +136,24 @@ export class PeriodArchive<K> extends PeriodPage<K> {
     });
   }
 
+  // 期間ページを整えて閉じるまでの操作を、適用する順に返す。
   // ロックは「期間が終わり、転記が揃った」ときに限る、という不変条件をここで守る。
-  decideAction(dailies: readonly DailyPage[], today: Temporal.PlainDate): PageAction {
+  decideActions(dailies: readonly DailyPage[], today: Temporal.PlainDate): readonly PageAction[] {
     if (this.isFuture(today)) {
-      return { type: PAGE_ACTION_TYPE.none };
+      return [];
     }
 
-    if (this.title !== this.expectedTitle) {
-      return { type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle };
-    }
+    // 作成直後のページはテンプレート適用でタイトルが未確定なので、同じ実行でリネームしてから閉じる。
+    const rename: readonly PageAction[] =
+      this.title === this.expectedTitle
+        ? []
+        : [{ type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle }];
+    const lock: readonly PageAction[] =
+      !this.isLocked && this.isFullyTransferred(dailies, today)
+        ? [{ type: PAGE_ACTION_TYPE.lock }]
+        : [];
 
-    if (!this.isLocked && this.isFullyTransferred(dailies, today)) {
-      return { type: PAGE_ACTION_TYPE.lock };
-    }
-
-    return { type: PAGE_ACTION_TYPE.none };
+    return [...rename, ...lock];
   }
 
   // 転記できた日を状態へ足した新しいインスタンスを返す。同じ実行内のロック判定へ反映するため。

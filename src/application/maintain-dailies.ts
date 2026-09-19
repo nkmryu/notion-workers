@@ -5,7 +5,7 @@ import type { DiaryRepository } from "../domain/diary-repository";
 import type { PageActionCounts } from "./page-actions";
 
 import { formatDailyTitle, shouldCreateTodayPage } from "../domain/daily";
-import { applyPageActions, planPageAction } from "./page-actions";
+import { applyPageActions, planPageActions } from "./page-actions";
 import { mapSequentially } from "../shared/sequence";
 
 export interface DailyMaintenanceResult extends PageActionCounts {
@@ -21,7 +21,7 @@ export async function maintainDailies(
 ): Promise<DailyMaintenanceResult> {
   const creations = shouldCreateTodayPage(dailies, today) ? [formatDailyTitle(today)] : [];
   const actions = dailies.flatMap(function (daily) {
-    return planPageAction(daily.id, daily.decideAction(today));
+    return planPageActions(daily.id, daily.decideActions(today));
   });
 
   await mapSequentially(creations, function (title) {

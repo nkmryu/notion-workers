@@ -6,7 +6,7 @@ import type { DiaryRepository } from "../domain/diary-repository";
 import type { PageActionCounts } from "./page-actions";
 
 import { PeriodPage, planMissingPeriodPages } from "../domain/period";
-import { applyPageActions, planPageAction } from "./page-actions";
+import { applyPageActions, planPageActions } from "./page-actions";
 import { mapSequentially } from "../shared/sequence";
 import { transferEndedDailies } from "./transfer-dailies";
 
@@ -56,7 +56,7 @@ export async function maintainPeriod<K, F>(
     }),
   );
   const actions = transfer.archives.flatMap(function (archive) {
-    return planPageAction(archive.id, archive.decideAction(dailies, today));
+    return planPageActions(archive.id, archive.decideActions(dailies, today));
   });
   const beforeLockResult = await beforeLock({ archives: transfer.archives, dailies, today });
   const counts = await applyPageActions(diary, actions);

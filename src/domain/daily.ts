@@ -97,18 +97,15 @@ export class DailyPage {
     return Temporal.PlainDate.compare(this.date, today) < 0;
   }
 
-  decideAction(today: Temporal.PlainDate): PageAction {
+  // 今日の分はタイトルを整え、終了した日は閉じる。操作は順に適用する。
+  decideActions(today: Temporal.PlainDate): readonly PageAction[] {
     if (this.isOn(today)) {
       return this.title === this.expectedTitle
-        ? { type: PAGE_ACTION_TYPE.none }
-        : { type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle };
+        ? []
+        : [{ type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle }];
     }
 
-    if (this.isEnded(today) && !this.isLocked) {
-      return { type: PAGE_ACTION_TYPE.lock };
-    }
-
-    return { type: PAGE_ACTION_TYPE.none };
+    return this.isEnded(today) && !this.isLocked ? [{ type: PAGE_ACTION_TYPE.lock }] : [];
   }
 }
 

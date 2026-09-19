@@ -5,13 +5,12 @@ export const PERIOD_TYPE = {
 } as const;
 export type PeriodType = (typeof PERIOD_TYPE)[keyof typeof PERIOD_TYPE];
 
+// ページに対して行う操作。「何もしない」は空の配列で表す。
 export const PAGE_ACTION_TYPE = {
   rename: "rename",
   lock: "lock",
-  none: "none",
 } as const;
 
 export type PageAction =
   | { readonly type: typeof PAGE_ACTION_TYPE.rename; readonly title: string }
-  | { readonly type: typeof PAGE_ACTION_TYPE.lock }
-  | { readonly type: typeof PAGE_ACTION_TYPE.none };
+  | { readonly type: typeof PAGE_ACTION_TYPE.lock };

@@ -24,43 +24,43 @@ describe("Daily のアクション決定", () => {
   it("今日の Daily 候補（空タイトル）に今日の日次タイトルを付ける", () => {
     // テンプレート適用前の空ページへ今日の日次タイトルを付けることを保証する。
     expect(
-      daily("2026-07-22", { title: "", isLocked: false }).decideAction(today),
-    ).toEqual({ type: "rename", title: "26.07.22（水）" });
+      daily("2026-07-22", { title: "", isLocked: false }).decideActions(today),
+    ).toEqual([{ type: "rename", title: "26.07.22（水）" }]);
   });
 
   it("今日の日付で曜日だけ異なる Daily を期待タイトルへ直す", () => {
     // 曜日を日付同定には使わず、今日の日次タイトルの整形では正しい曜日へ直すことを保証する。
     expect(
-      daily("2026-07-22", { title: "26.07.22（火）", isLocked: false }).decideAction(today),
-    ).toEqual({ type: "rename", title: "26.07.22（水）" });
+      daily("2026-07-22", { title: "26.07.22（火）", isLocked: false }).decideActions(today),
+    ).toEqual([{ type: "rename", title: "26.07.22（水）" }]);
   });
 
   it("今日の日付でリネーム済みの Daily には何もしない", () => {
     // 今日のページへ不要な PATCH を重ねないことを保証する。
     expect(
-      daily("2026-07-22", { title: "26.07.22（水）", isLocked: false }).decideAction(today),
-    ).toEqual({ type: "none" });
+      daily("2026-07-22", { title: "26.07.22（水）", isLocked: false }).decideActions(today),
+    ).toEqual([]);
   });
 
   it("過去日の未ロック Daily をロックする", () => {
     // 終了した日のページを編集不可にすることを保証する。
     expect(
-      daily("2026-07-21", { title: "26.07.21（火）", isLocked: false }).decideAction(today),
-    ).toEqual({ type: "lock" });
+      daily("2026-07-21", { title: "26.07.21（火）", isLocked: false }).decideActions(today),
+    ).toEqual([{ type: "lock" }]);
   });
 
   it("過去日のロック済み Daily には何もしない", () => {
     // ロック済みページへ PATCH を重ねないことを保証する。
     expect(
-      daily("2026-07-21", { title: "26.07.21（火）", isLocked: true }).decideAction(today),
-    ).toEqual({ type: "none" });
+      daily("2026-07-21", { title: "26.07.21（火）", isLocked: true }).decideActions(today),
+    ).toEqual([]);
   });
 
   it("未来の日付の Daily には何もしない", () => {
     // 先に作られた未来日のページをロックもリネームもしないことを保証する。
     expect(
-      daily("2026-07-23", { title: "26.07.23（木）", isLocked: false }).decideAction(today),
-    ).toEqual({ type: "none" });
+      daily("2026-07-23", { title: "26.07.23（木）", isLocked: false }).decideActions(today),
+    ).toEqual([]);
   });
 });
 

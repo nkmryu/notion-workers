@@ -4,10 +4,10 @@ import type { DiaryRepository } from "../domain/diary-repository";
 import { PAGE_ACTION_TYPE } from "../domain/page";
 import { countBy, mapSequentially } from "../shared/sequence";
 
-// ページ 1 件に対して決めた操作。none は含めない。
+// ページ 1 件に対して決めた操作。
 export interface PlannedPageAction {
   readonly pageId: string;
-  readonly action: Exclude<PageAction, { readonly type: typeof PAGE_ACTION_TYPE.none }>;
+  readonly action: PageAction;
 }
 
 export interface PageActionCounts {
@@ -15,8 +15,13 @@ export interface PageActionCounts {
   readonly locks: number;
 }
 
-export function planPageAction(pageId: string, action: PageAction): readonly PlannedPageAction[] {
-  return action.type === PAGE_ACTION_TYPE.none ? [] : [{ pageId, action }];
+export function planPageActions(
+  pageId: string,
+  actions: readonly PageAction[],
+): readonly PlannedPageAction[] {
+  return actions.map(function (action) {
+    return { pageId, action };
+  });
 }
 
 function applyPageAction(diary: DiaryRepository, planned: PlannedPageAction): Promise<void> {
