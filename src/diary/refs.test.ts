@@ -1,6 +1,11 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
+import { DailyPage, formatDailyTitle } from "./daily";
+import { monthly } from "./monthly";
+import type { PeriodArchiveProps } from "./period";
+
+import { PeriodArchive } from "./period";
 import {
   buildRefsSection,
   collectRefs,
@@ -136,10 +141,36 @@ describe("buildRefsSection", () => {
   });
 });
 
+function daily(text: string): DailyPage {
+  const date = Temporal.PlainDate.from(text);
+  return new DailyPage({
+    id: `daily-${text}`,
+    createdTime: "2026-01-01T00:00:00.000Z",
+    title: formatDailyTitle(date),
+    isLocked: false,
+    date,
+  });
+}
+
+function archive(
+  props: Partial<PeriodArchiveProps<Temporal.PlainYearMonth>> & { readonly key: Temporal.PlainYearMonth },
+): PeriodArchive<Temporal.PlainYearMonth> {
+  return new PeriodArchive(monthly, {
+    id: `monthly-${props.key.toString()}`,
+    title: monthly.formatTitle(props.key),
+    isLocked: false,
+    transferredDates: [],
+    hasRefs: false,
+    ...props,
+  });
+}
+
 describe("shouldGenerateRefs", () => {
   const today = Temporal.PlainDate.from("2026-07-22");
-  const dailies = [{ date: Temporal.PlainDate.from("2026-06-01") }, { date: Temporal.PlainDate.from("2026-06-02") }];
+  const dailies = [daily("2026-06-01"), daily("2026-06-02")];
   const pastMonthly = {
+    id: "monthly-06",
+    title: "26.M06",
     key: Temporal.PlainYearMonth.from({ year: 2026, month: 6 }),
     isLocked: false,
     transferredDates: [Temporal.PlainDate.from("2026-06-01"), Temporal.PlainDate.from("2026-06-02")],
@@ -148,21 +179,21 @@ describe("shouldGenerateRefs", () => {
 
   it("Refs があれば生成しない", () => {
     // Refs の有無を冪等キーとして重複生成を防ぐことを保証する。
-    expect(shouldGenerateRefs({ ...pastMonthly, hasRefs: true }, dailies, today)).toBe(false);
+    expect(shouldGenerateRefs(archive({ ...pastMonthly, hasRefs: true }), dailies, today)).toBe(false);
   });
 
   it("未ロックの過去月は全日の転記が揃った場合だけ生成する", () => {
     // 日次転記が完了する前には Refs を確定せず、ロック直前だけ生成することを保証する。
     expect(
-      shouldGenerateRefs({ ...pastMonthly, transferredDates: [Temporal.PlainDate.from("2026-06-01")] }, dailies, today),
+      shouldGenerateRefs(archive({ ...pastMonthly, transferredDates: [Temporal.PlainDate.from("2026-06-01")] }), dailies, today),
     ).toBe(false);
-    expect(shouldGenerateRefs(pastMonthly, dailies, today)).toBe(true);
+    expect(shouldGenerateRefs(archive(pastMonthly), dailies, today)).toBe(true);
   });
 
   it("今月の Monthly は生成対象にしない", () => {
     // 進行中の月へ Refs を生成しないことを保証する。
     expect(
-      shouldGenerateRefs({ ...pastMonthly, key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }) }, dailies, today),
+      shouldGenerateRefs(archive({ ...pastMonthly, key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }) }), dailies, today),
     ).toBe(false);
   });
 
@@ -170,7 +201,7 @@ describe("shouldGenerateRefs", () => {
     // 外部要因で Refs より先にロックされた月も定期実行だけで補完できることを保証する。
     const locked = { ...pastMonthly, isLocked: true, transferredDates: [] };
 
-    expect(shouldGenerateRefs(locked, dailies, today)).toBe(true);
-    expect(shouldGenerateRefs({ ...locked, hasRefs: true }, dailies, today)).toBe(false);
+    expect(shouldGenerateRefs(archive(locked), dailies, today)).toBe(true);
+    expect(shouldGenerateRefs(archive({ ...locked, hasRefs: true }), dailies, today)).toBe(false);
   });
 });

@@ -113,7 +113,8 @@ describe("toPeriodPage", () => {
     // インポート後もタイトルが示す ISO 週へ Weekly を帰属させることを保証する。
     expect(
       toPeriodPage(weekly, createRow("26.W29", { created_time: "2026-07-26T03:00:00.000Z" })),
-    ).toEqual({
+    ).toMatchObject({
+      period: weekly,
       id: "page-id",
       title: "26.W29",
       isLocked: false,

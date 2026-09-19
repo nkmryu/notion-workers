@@ -1,4 +1,4 @@
-import type { PeriodDefinition } from "./period";
+import type { PeriodDefinition, PeriodPage } from "./period";
 
 import { Temporal } from "temporal-polyfill";
 
@@ -41,6 +41,8 @@ export function parseIsoWeekTitle(title: string, referenceYear: number): IsoWeek
 
   return week >= 1 && week <= isoWeeksInYear(year) ? { year, week } : null;
 }
+
+export type WeeklyPage = PeriodPage<IsoWeek>;
 
 export const weekly: PeriodDefinition<IsoWeek> = {
   type: PERIOD_TYPE.weekly,

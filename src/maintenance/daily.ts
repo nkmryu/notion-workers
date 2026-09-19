@@ -1,10 +1,10 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage } from "../diary/page";
+import type { DailyPage } from "../diary/daily";
 import type { DiaryStore } from "./diary-store";
 
-import { PAGE_ACTION_TYPE, decideDailyPageAction, shouldCreateTodayPage } from "../diary/daily";
-import { formatDailyTitle } from "../diary/daily";
+import { formatDailyTitle, shouldCreateTodayPage } from "../diary/daily";
+import { PAGE_ACTION_TYPE } from "../diary/page";
 
 export interface DailyMaintenanceResult {
   readonly created: number;
@@ -30,7 +30,7 @@ export async function maintainDailies(
   let locks = 0;
 
   for (const daily of dailies) {
-    const action = decideDailyPageAction(daily, today);
+    const action = daily.decideAction(today);
 
     if (action.type === PAGE_ACTION_TYPE.rename) {
       await diary.renamePage(daily.id, action.title);

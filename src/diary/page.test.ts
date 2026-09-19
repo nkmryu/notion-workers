@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PAGE_ACTION_TYPE } from "./daily";
-import { PERIOD_TYPE } from "./page";
+import { PAGE_ACTION_TYPE, PERIOD_TYPE } from "./page";
 
 describe("状態・種別の値", () => {
   it.each([

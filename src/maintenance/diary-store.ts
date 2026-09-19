@@ -1,4 +1,6 @@
-import type { DailyPage, MonthlyPage, WeeklyPage } from "../diary/page";
+import type { DailyPage } from "../diary/daily";
+import type { MonthlyPage } from "../diary/monthly";
+import type { WeeklyPage } from "../diary/weekly";
 
 // 日誌データベースへの操作口。手続き層はこのポートだけに依存し、Notion SDK は notion/ が実装する。
 // 一覧は種別ごとに取り、行から DailyPage / WeeklyPage / MonthlyPage への写像は実装側が行う。

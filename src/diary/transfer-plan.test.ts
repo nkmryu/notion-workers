@@ -2,14 +2,12 @@ import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 import type { IsoWeek } from "./weekly";
-import type { DailyPage, PeriodArchive } from "./page";
 
-import { parseDailyTitle } from "./daily";
+import { DailyPage, parseDailyTitle } from "./daily";
 import { monthly } from "./monthly";
+import { PeriodArchive } from "./period";
 import { planTransfers } from "./transfer-plan";
 import { weekly } from "./weekly";
-
-type DailyFixture = Pick<DailyPage, "id" | "createdTime" | "date">;
 
 const today = Temporal.PlainDate.from("2026-07-22");
 
@@ -17,14 +15,14 @@ function daily(
   id: string,
   title: string,
   createdTime = "2026-07-22T01:00:00.000Z",
-): DailyFixture {
+): DailyPage {
   const date = parseDailyTitle(title);
 
   if (date === null) {
     throw new Error(`テスト用タイトルが日付形式ではありません: ${title}`);
   }
 
-  return { id, createdTime, date };
+  return new DailyPage({ id, createdTime, title, isLocked: false, date });
 }
 
 function weeklyPage(
@@ -32,14 +30,14 @@ function weeklyPage(
   transferredDates: readonly Temporal.PlainDate[] = [],
   isLocked = false,
 ): PeriodArchive<IsoWeek> {
-  return {
+  return new PeriodArchive(weekly, {
     id: `weekly-${week}`,
     key: { year: 2026, week },
     title: `26.W${week}`,
     isLocked,
     transferredDates,
     hasRefs: false,
-  };
+  });
 }
 
 describe("Weekly への転記計画", () => {
@@ -47,7 +45,6 @@ describe("Weekly への転記計画", () => {
     // 日付見出しが存在すれば同じ日の全Dailyを重複転記しないことを保証する。
     expect(
       planTransfers(
-        weekly,
 
         [daily("daily-20", "26.07.20（月）")],
         [weeklyPage(30, [Temporal.PlainDate.from("2026-07-20")])],
@@ -60,7 +57,6 @@ describe("Weekly への転記計画", () => {
     // 転記先が存在しない日の本文を別の週へ書き込まないことを保証する。
     expect(
       planTransfers(
-        weekly,
 [daily("daily-13", "26.07.13（月）")], [], today),
     ).toEqual([]);
   });
@@ -69,7 +65,6 @@ describe("Weekly への転記計画", () => {
     // 閉じた週次ページを更新対象にしないことを保証する。
     expect(
       planTransfers(
-        weekly,
 
         [daily("daily-13", "26.07.13（月）")],
         [weeklyPage(29, [], true)],
@@ -82,7 +77,6 @@ describe("Weekly への転記計画", () => {
     // 作成日が過去でも終了していない当日の本文を転記しないことを保証する。
     expect(
       planTransfers(
-        weekly,
 
         [
           daily(
@@ -101,7 +95,6 @@ describe("Weekly への転記計画", () => {
     // 作成日の前後関係に依存せず日付見出しを暦日順で追記することを保証する。
     expect(
       planTransfers(
-        weekly,
 
         [
           daily(
@@ -140,7 +133,6 @@ describe("Weekly への転記計画", () => {
     // 同じ日付の全ページ本文を1つの冪等単位として順序どおり転記することを保証する。
     expect(
       planTransfers(
-        weekly,
 
         [
           daily(
@@ -177,7 +169,6 @@ describe("Weekly への転記計画", () => {
 
     expect(
       planTransfers(
-        weekly,
 
         dailies,
         [weeklyPage(28)],
@@ -198,14 +189,14 @@ describe("Weekly への転記計画", () => {
 });
 
 describe("Monthly への転記計画", () => {
-  const monthlyPage: PeriodArchive<Temporal.PlainYearMonth> = {
+  const monthlyPage = new PeriodArchive(monthly, {
     id: "monthly-07",
     key: Temporal.PlainYearMonth.from({ year: 2026, month: 7 }),
     title: "26.M07",
     isLocked: false,
     transferredDates: [],
     hasRefs: false,
-  };
+  });
 
   it("Weeklyとは独立して同じDailyを同月Monthlyへ計画する", () => {
     // 週次転記済み見出しの有無が月次転記の冪等判定へ影響しないことを保証する。
@@ -213,10 +204,9 @@ describe("Monthly への転記計画", () => {
 
     expect(
       planTransfers(
-        weekly,
 pages, [weeklyPage(30, [Temporal.PlainDate.from("2026-07-20")])], today),
     ).toEqual([]);
-    expect(planTransfers(monthly, pages, [monthlyPage], today)).toEqual([
+    expect(planTransfers(pages, [monthlyPage], today)).toEqual([
       {
         periodType: "monthly",
         destinationPageId: "monthly-07",

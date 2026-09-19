@@ -1,10 +1,8 @@
-import type { DailyPage, PeriodArchive, PeriodType } from "./page";
-import type { PeriodDefinition } from "./period";
+import type { DailyPage } from "./daily";
+import type { PeriodType } from "./page";
+import type { PeriodArchive } from "./period";
 
 import { Temporal } from "temporal-polyfill";
-
-import { formatDailyTitle } from "./daily";
-import { isTransferred } from "./period";
 
 export interface TransferPlan {
   readonly periodType: PeriodType;
@@ -14,10 +12,9 @@ export interface TransferPlan {
   readonly dailyPageIds: readonly string[];
 }
 
-type EndedDaily = Pick<DailyPage, "id" | "createdTime" | "date">;
 
 // 同じ日付の Daily が複数あるときは created_time 順に 1 つの見出しの下へ並べる。
-function compareDailies(left: EndedDaily, right: EndedDaily): number {
+function compareDailies(left: DailyPage, right: DailyPage): number {
   const dateComparison = Temporal.PlainDate.compare(left.date, right.date);
 
   if (dateComparison !== 0) {
@@ -33,13 +30,12 @@ function compareDailies(left: EndedDaily, right: EndedDaily): number {
 }
 
 function listEndedDailies(
-  dailies: readonly EndedDaily[],
+  dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
-): readonly EndedDaily[] {
-  // 今日の Daily は書きかけなので転記しない。
+): readonly DailyPage[] {
   return dailies
     .filter(function (daily) {
-      return Temporal.PlainDate.compare(daily.date, today) < 0;
+      return daily.isEnded(today);
     })
     .toSorted(compareDailies);
 }
@@ -68,23 +64,22 @@ function addToPlans(
 }
 
 export function planTransfers<K>(
-  period: PeriodDefinition<K>,
-  dailies: readonly EndedDaily[],
-  destinations: readonly Pick<PeriodArchive<K>, "id" | "key" | "isLocked" | "transferredDates">[],
+  dailies: readonly DailyPage[],
+  destinations: readonly PeriodArchive<K>[],
   today: Temporal.PlainDate,
 ): readonly TransferPlan[] {
   return listEndedDailies(dailies, today).reduce<readonly TransferPlan[]>(function (
     plans,
     daily,
   ) {
-    const dailyKey = period.keyOf(daily.date);
     const destination = destinations.find(function (candidate) {
-      return period.compare(candidate.key, dailyKey) === 0;
+      return candidate.contains(daily.date);
     });
+
     if (
       destination === undefined ||
       destination.isLocked ||
-      isTransferred(destination, daily.date)
+      destination.isTransferred(daily.date)
     ) {
       return plans;
     }
@@ -92,10 +87,10 @@ export function planTransfers<K>(
     return addToPlans(
       plans,
       {
-        periodType: period.type,
+        periodType: destination.period.type,
         destinationPageId: destination.id,
         date: daily.date,
-        title: formatDailyTitle(daily.date),
+        title: daily.expectedTitle,
         dailyPageIds: [],
       },
       daily.id,

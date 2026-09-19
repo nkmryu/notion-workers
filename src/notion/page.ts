@@ -4,14 +4,13 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 
-import type { DailyPage, PeriodPage } from "../diary/page";
 import type { PeriodDefinition } from "../diary/period";
 
 import { isFullPage } from "@notionhq/client";
 
-import { resolveDailyDate } from "../diary/daily";
+import { DailyPage, resolveDailyDate } from "../diary/daily";
 import { PERIOD_TYPE } from "../diary/page";
-import { resolvePeriodKey } from "../diary/period";
+import { PeriodPage, resolvePeriodKey } from "../diary/period";
 
 // 種別は type select で表され、Notion 上の選択肢名と厳密に一致させる。
 export const PAGE_TYPE_PROPERTY_NAME = "type";
@@ -70,23 +69,23 @@ export function toDailyPage(row: Row): DailyPage {
   const page = requireFullPage(row);
   const title = parseTitle(page.properties);
 
-  return {
+  return new DailyPage({
     id: page.id,
     createdTime: page.created_time,
     title,
     isLocked: page.is_locked,
     date: resolveDailyDate({ title, createdTime: page.created_time }),
-  };
+  });
 }
 
 export function toPeriodPage<K>(period: PeriodDefinition<K>, row: Row): PeriodPage<K> {
   const page = requireFullPage(row);
   const title = parseTitle(page.properties);
 
-  return {
+  return new PeriodPage(period, {
     id: page.id,
     title,
     isLocked: page.is_locked,
     key: resolvePeriodKey(period, { title, createdTime: page.created_time }),
-  };
+  });
 }

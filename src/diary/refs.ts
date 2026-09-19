@@ -1,13 +1,12 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage, PeriodArchive } from "./page";
+import type { DailyPage } from "./daily";
+import type { PeriodArchive } from "./period";
 import type { CollectedRef, ResolvedRef } from "./ref-title";
 
 import { createSectionHeader, stripFencedCode } from "./markdown-section";
 import { extractSectionTitles } from "./markdown-section";
-import { monthly } from "./monthly";
 import { isNotionInternalUrl, isSignedFileUrl } from "./notion-url";
-import { isFullyTransferred } from "./period";
 
 export const REFS_HEADING_TITLE = "Refs";
 // 画像 "![alt](url)" は "!" で始まるため除き、本文のリンクだけを拾う。
@@ -115,18 +114,13 @@ export function hasRefsSection(markdown: string): boolean {
 
 // Refs は月が閉じる直前に一度だけ作る。ロック済みで Refs の無い過去月は、閉じ忘れとして補完する。
 export function shouldGenerateRefs(
-  archive: Pick<
-    PeriodArchive<Temporal.PlainYearMonth>,
-    "key" | "isLocked" | "transferredDates" | "hasRefs"
-  >,
-  dailies: readonly Pick<DailyPage, "date">[],
+  archive: PeriodArchive<Temporal.PlainYearMonth>,
+  dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): boolean {
-  if (archive.hasRefs) {
+  if (archive.hasRefs || !archive.isPast(today)) {
     return false;
   }
 
-  const isPastMonth = monthly.compare(archive.key, monthly.keyOf(today)) < 0;
-
-  return isPastMonth && (archive.isLocked || isFullyTransferred(monthly, archive, dailies, today));
+  return archive.isLocked || archive.isFullyTransferred(dailies, today);
 }

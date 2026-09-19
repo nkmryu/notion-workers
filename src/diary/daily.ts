@@ -1,8 +1,9 @@
-import type { DailyPage } from "./page";
+import type { PageAction } from "./page";
 
 import { Temporal } from "temporal-polyfill";
 
 import { parseCreatedTime } from "./jst";
+import { PAGE_ACTION_TYPE } from "./page";
 
 // Temporal の dayOfWeek は月曜 = 1 … 日曜 = 7。
 const WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"] as const;
@@ -59,41 +60,63 @@ export function resolveDailyDate(page: {
   throw new Error(`Daily のタイトルが日付形式ではありません: ${page.title}`);
 }
 
-export const PAGE_ACTION_TYPE = {
-  rename: "rename",
-  lock: "lock",
-  none: "none",
-} as const;
+export interface DailyPageProps {
+  readonly id: string;
+  readonly createdTime: string;
+  readonly title: string;
+  readonly isLocked: boolean;
+  readonly date: Temporal.PlainDate;
+}
 
-export type PageAction =
-  | { readonly type: typeof PAGE_ACTION_TYPE.rename; readonly title: string }
-  | { readonly type: typeof PAGE_ACTION_TYPE.lock }
-  | { readonly type: typeof PAGE_ACTION_TYPE.none };
+// 日誌の 1 日分。日付（JST の暦日）はタイトルから一度だけ確定し、以降の判断はこの値だけを使う。
+export class DailyPage {
+  readonly id: string;
+  readonly createdTime: string;
+  readonly title: string;
+  readonly isLocked: boolean;
+  readonly date: Temporal.PlainDate;
+
+  constructor(props: DailyPageProps) {
+    this.id = props.id;
+    this.createdTime = props.createdTime;
+    this.title = props.title;
+    this.isLocked = props.isLocked;
+    this.date = props.date;
+  }
+
+  get expectedTitle(): string {
+    return formatDailyTitle(this.date);
+  }
+
+  isOn(date: Temporal.PlainDate): boolean {
+    return this.date.equals(date);
+  }
+
+  // 今日より前の日は書き終えている。今日の分は書きかけなので転記もロックもしない。
+  isEnded(today: Temporal.PlainDate): boolean {
+    return Temporal.PlainDate.compare(this.date, today) < 0;
+  }
+
+  decideAction(today: Temporal.PlainDate): PageAction {
+    if (this.isOn(today)) {
+      return this.title === this.expectedTitle
+        ? { type: PAGE_ACTION_TYPE.none }
+        : { type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle };
+    }
+
+    if (this.isEnded(today) && !this.isLocked) {
+      return { type: PAGE_ACTION_TYPE.lock };
+    }
+
+    return { type: PAGE_ACTION_TYPE.none };
+  }
+}
 
 export function shouldCreateTodayPage(
-  dailies: readonly Pick<DailyPage, "date">[],
+  dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): boolean {
   return !dailies.some(function (daily) {
-    return daily.date.equals(today);
+    return daily.isOn(today);
   });
-}
-
-export function decideDailyPageAction(
-  page: Pick<DailyPage, "date" | "title" | "isLocked">,
-  today: Temporal.PlainDate,
-): PageAction {
-  const expectedTitle = formatDailyTitle(page.date);
-
-  if (page.date.equals(today)) {
-    return page.title === expectedTitle
-      ? { type: PAGE_ACTION_TYPE.none }
-      : { type: PAGE_ACTION_TYPE.rename, title: expectedTitle };
-  }
-
-  if (Temporal.PlainDate.compare(page.date, today) < 0 && !page.isLocked) {
-    return { type: PAGE_ACTION_TYPE.lock };
-  }
-
-  return { type: PAGE_ACTION_TYPE.none };
 }

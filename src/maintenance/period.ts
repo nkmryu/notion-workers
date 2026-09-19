@@ -1,11 +1,11 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
-import type { PeriodCreationPlan, PeriodDefinition } from "../diary/period";
+import type { DailyPage } from "../diary/daily";
+import type { PeriodArchive, PeriodCreationPlan, PeriodDefinition } from "../diary/period";
 import type { DiaryStore } from "./diary-store";
 
-import { PAGE_ACTION_TYPE } from "../diary/daily";
-import { decidePeriodPageAction, planMissingPeriodPages } from "../diary/period";
+import { PAGE_ACTION_TYPE } from "../diary/page";
+import { PeriodPage, planMissingPeriodPages } from "../diary/period";
 import { transferEndedDailies } from "./transfer";
 
 // ロック前に行う工程（Monthly の Refs）への入力。工程を飛ばしてロックされたページの補完も担う。
@@ -32,6 +32,7 @@ export interface PeriodMaintenanceResult<F> {
 
 async function createPeriodPages<K>(
   diary: DiaryStore,
+  period: PeriodDefinition<K>,
   templateId: string,
   plans: readonly PeriodCreationPlan<K>[],
 ): Promise<readonly PeriodPage<K>[]> {
@@ -40,7 +41,10 @@ async function createPeriodPages<K>(
   for (const plan of plans) {
     const pageId = await diary.createPageFromTemplate({ templateId, title: plan.title });
     // テンプレートの非同期適用後にも期間タイトルを確定させるため、同一実行でリネーム対象にする。
-    created = [...created, { id: pageId, title: "", isLocked: false, key: plan.key }];
+    created = [
+      ...created,
+      new PeriodPage(period, { id: pageId, title: "", isLocked: false, key: plan.key }),
+    ];
   }
 
   return created;
@@ -57,12 +61,12 @@ export async function maintainPeriod<K, F>(
   const { period, templateId } = maintenance;
   const createdPages = await createPeriodPages(
     diary,
+    period,
     templateId,
     planMissingPeriodPages(period, dailies, existingPages, today),
   );
   const transfer = await transferEndedDailies(
     diary,
-    period,
     dailies,
     [...existingPages, ...createdPages],
     today,
@@ -71,7 +75,7 @@ export async function maintainPeriod<K, F>(
     }),
   );
   const actions = transfer.archives.flatMap(function (archive) {
-    const action = decidePeriodPageAction(period, archive, dailies, today);
+    const action = archive.decideAction(dailies, today);
     return action.type === PAGE_ACTION_TYPE.none ? [] : [{ page: archive, action }];
   });
   const beforeLockResult = await maintenance.beforeLock({ archives: transfer.archives, dailies, today });

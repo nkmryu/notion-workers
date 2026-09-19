@@ -45,10 +45,10 @@ src/
     markdown-links.ts  Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
     pacing.ts, error.ts
   diary/             日誌の規則。API に依存しない純粋関数だけを置く
-    page.ts          DailyPage / WeeklyPage / MonthlyPage と、転記状態付きの PeriodArchive
-    daily.ts         Daily の規則（タイトルの読み書き・日付の解決・作成判定・リネーム・ロック）
-    period.ts        Weekly / Monthly に共通する期間ページの規則（作成計画・アクション・ロック判定）
-    weekly.ts, monthly.ts   ISO 週 / 暦月のタイトル規則と、period.ts へ渡す定義
+    page.ts          種別・アクションの定数
+    daily.ts         DailyPage エンティティ（期待タイトル・終了判定・アクション決定）とタイトル規則
+    period.ts        PeriodPage / PeriodArchive エンティティ（自分の期間規則を持ち、転記完了とロックの不変条件を守る）と作成計画
+    weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
     transfer-plan.ts 転記計画（どの Daily をどの期間ページへ）
     transfer-markdown.ts    転記セクションの Markdown 組み立て
     refs.ts          Refs の収集とセクション組み立て

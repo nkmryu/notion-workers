@@ -1,7 +1,7 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
-import type { PeriodDefinition } from "../diary/period";
+import type { DailyPage } from "../diary/daily";
+import type { PeriodArchive, PeriodPage } from "../diary/period";
 import type { TransferPlan } from "../diary/transfer-plan";
 import type { DailyMarkdown } from "../diary/transfer-markdown";
 import type { DiaryStore } from "./diary-store";
@@ -27,7 +27,7 @@ const EMPTY_ARCHIVE_STATE = { transferredDates: [], hasRefs: false } as const;
 async function readArchiveState(
   diary: DiaryStore,
   pageId: string,
-): Promise<Pick<PeriodArchive<unknown>, "transferredDates" | "hasRefs">> {
+): Promise<typeof EMPTY_ARCHIVE_STATE | { readonly transferredDates: readonly Temporal.PlainDate[]; readonly hasRefs: boolean }> {
   const sectionTitles = await diary.getSectionTitles(pageId);
 
   return {
@@ -41,7 +41,6 @@ async function readArchiveState(
 
 async function listArchives<K>(
   diary: DiaryStore,
-  period: PeriodDefinition<K>,
   periodPages: readonly PeriodPage<K>[],
   createdPageIds: readonly string[],
 ): Promise<readonly PeriodArchive<K>[]> {
@@ -51,13 +50,12 @@ async function listArchives<K>(
     // この実行で作った空ページと、ロック前の工程が無い期間のロック済みページは、読まなくても状態が決まる。
     const canSkipReading =
       createdPageIds.includes(page.id) ||
-      (page.isLocked && !period.hasBeforeLockStep);
+      (page.isLocked && !page.period.hasBeforeLockStep);
     archives = [
       ...archives,
-      {
-        ...page,
-        ...(canSkipReading ? EMPTY_ARCHIVE_STATE : await readArchiveState(diary, page.id)),
-      },
+      page.withArchiveState(
+        canSkipReading ? EMPTY_ARCHIVE_STATE : await readArchiveState(diary, page.id),
+      ),
     ];
   }
 
@@ -83,9 +81,7 @@ function recordTransferred<K>(
   plan: TransferPlan,
 ): readonly PeriodArchive<K>[] {
   return archives.map(function (archive) {
-    return archive.id === plan.destinationPageId
-      ? { ...archive, transferredDates: [...archive.transferredDates, plan.date] }
-      : archive;
+    return archive.id === plan.destinationPageId ? archive.withTransferred(plan.date) : archive;
   });
 }
 
@@ -116,14 +112,13 @@ async function transferOne(
 
 export async function transferEndedDailies<K>(
   diary: DiaryStore,
-  period: PeriodDefinition<K>,
   dailies: readonly DailyPage[],
   periodPages: readonly PeriodPage<K>[],
   today: Temporal.PlainDate,
   createdPageIds: readonly string[],
 ): Promise<TransferResult<K>> {
-  let archives = await listArchives(diary, period, periodPages, createdPageIds);
-  const plans = planTransfers(period, dailies, archives, today);
+  let archives = await listArchives(diary, periodPages, createdPageIds);
+  const plans = planTransfers(dailies, archives, today);
   let fallbackDates: readonly string[] = [];
 
   for (const plan of plans) {

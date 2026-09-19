@@ -1,4 +1,4 @@
-import type { PeriodDefinition } from "./period";
+import type { PeriodDefinition, PeriodPage } from "./period";
 
 import { Temporal } from "temporal-polyfill";
 
@@ -34,6 +34,8 @@ export function parseCalendarMonthTitle(
     month,
   });
 }
+
+export type MonthlyPage = PeriodPage<Temporal.PlainYearMonth>;
 
 export const monthly: PeriodDefinition<Temporal.PlainYearMonth> = {
   type: PERIOD_TYPE.monthly,

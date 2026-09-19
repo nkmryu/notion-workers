@@ -1,6 +1,7 @@
 import type { Temporal } from "temporal-polyfill";
 
-import type { DailyPage, PeriodArchive } from "../diary/page";
+import type { DailyPage } from "../diary/daily";
+import type { PeriodArchive } from "../diary/period";
 import type { DiaryStore } from "./diary-store";
 import type { RefTitleResolutionCounts } from "./ref-title-lookup";
 
