@@ -1,6 +1,6 @@
 import type { CalendarMonth } from "../diary/calendar-month";
 import type { DailyPage, PeriodArchive } from "../diary/page";
-import type { NotionDiary } from "../notion/client";
+import type { DiaryStore } from "./diary-store";
 import type { RefTitleResolutionCounts } from "./ref-title-lookup";
 
 import { monthly } from "../diary/monthly";
@@ -10,8 +10,6 @@ import {
   hasRefsSection,
   shouldGenerateRefs,
 } from "../diary/refs";
-import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
-import { restoreExternalLinks } from "./external-links";
 import { lookupRefTitles } from "./ref-title-lookup";
 
 export interface RefsResult {
@@ -48,7 +46,7 @@ function listCandidates(
 
 // 過去月の Monthly へ、本文中の外部 URL をまとめた Refs セクションを追記する。
 export async function generateRefs(
-  diary: NotionDiary,
+  diary: DiaryStore,
   archives: readonly PeriodArchive<CalendarMonth>[],
   dailies: readonly DailyPage[],
   now: Date,
@@ -65,16 +63,12 @@ export async function generateRefs(
       continue;
     }
 
-    // 旧方式で転記済みの月には bookmark ブロックが残っているため、Refs 収集前に外部 URL を復元する。
-    const resolved = await lookupRefTitles(
-      collectRefs(await restoreExternalLinks(diary, markdown)),
-    );
+    const resolved = await lookupRefTitles(collectRefs(markdown));
     const section = buildRefsSection(resolved.refs);
     titleResolution = addCounts(titleResolution, resolved.counts);
 
     if (section !== "") {
       await diary.appendMarkdown(archive.id, section);
-      await sleep(WRITE_INTERVAL_MS);
       generated += 1;
     }
   }

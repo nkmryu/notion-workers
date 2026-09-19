@@ -1,15 +1,15 @@
 import "dotenv/config";
 
-import type { NotionDiary } from "./notion/client";
+import type { DiaryStore } from "./maintenance/diary-store";
 
 import { Client } from "@notionhq/client";
 
-import { createNotionDiary } from "./notion/client";
+import { createNotionDiaryStore } from "./notion/client";
 
 const NOTION_VERSION = "2026-03-11";
 
 export interface Config {
-  readonly diary: NotionDiary;
+  readonly diary: DiaryStore;
   readonly dailyTemplateId: string;
   readonly weeklyTemplateId: string;
   readonly monthlyTemplateId: string;
@@ -32,7 +32,7 @@ export function loadConfig(): Config {
   });
 
   return {
-    diary: createNotionDiary(client, getRequiredEnv("NOTION_DATA_SOURCE_ID")),
+    diary: createNotionDiaryStore(client, getRequiredEnv("NOTION_DATA_SOURCE_ID")),
     dailyTemplateId: getRequiredEnv("NOTION_TEMPLATE_ID"),
     weeklyTemplateId: getRequiredEnv("NOTION_WEEKLY_TEMPLATE_ID"),
     monthlyTemplateId: getRequiredEnv("NOTION_MONTHLY_TEMPLATE_ID"),

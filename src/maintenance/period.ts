@@ -1,10 +1,9 @@
 import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
 import type { PeriodCreationPlan, PeriodDefinition } from "../diary/period";
-import type { NotionDiary } from "../notion/client";
+import type { DiaryStore } from "./diary-store";
 
 import { PAGE_ACTION_TYPE } from "../diary/daily";
 import { decidePeriodPageAction, planMissingPeriodPages } from "../diary/period";
-import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 import { transferEndedDailies } from "./transfer";
 
 // ロック前の仕上げ（Monthly の Refs）。ロック済みで仕上げが無いページの補完も担う。
@@ -30,7 +29,7 @@ export interface PeriodMaintenanceResult<F> {
 }
 
 async function createPeriodPages<K>(
-  diary: NotionDiary,
+  diary: DiaryStore,
   templateId: string,
   plans: readonly PeriodCreationPlan<K>[],
 ): Promise<readonly PeriodPage<K>[]> {
@@ -38,7 +37,6 @@ async function createPeriodPages<K>(
 
   for (const plan of plans) {
     const pageId = await diary.createPageFromTemplate({ templateId, title: plan.title });
-    await sleep(WRITE_INTERVAL_MS);
     // テンプレートの非同期適用後にも期間タイトルを確定させるため、同一実行でリネーム対象にする。
     created = [...created, { id: pageId, title: "", isLocked: false, key: plan.key }];
   }
@@ -48,7 +46,7 @@ async function createPeriodPages<K>(
 
 // 期間ページを最新状態にする: 終了した期間のページを作り、Daily を転記し、仕上げてからリネーム・ロックする。
 export async function maintainPeriod<K, F>(
-  diary: NotionDiary,
+  diary: DiaryStore,
   maintenance: PeriodMaintenance<K, F>,
   dailies: readonly DailyPage[],
   existingPages: readonly PeriodPage<K>[],
@@ -86,8 +84,6 @@ export async function maintainPeriod<K, F>(
       await diary.lockPage(page.id);
       locks += 1;
     }
-
-    await sleep(WRITE_INTERVAL_MS);
   }
 
   return {

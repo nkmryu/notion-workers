@@ -38,11 +38,11 @@ Markdown への変換で失われるものは次のように扱います。
 src/
   main.ts            エントリポイント（npm run maintain）
   config.ts          環境変数から設定と Notion クライアントを組み立てる
-  notion/            Notion API との境界。SDK の呼び出しとレスポンスの変換だけを置く
-    client.ts        NotionDiary: メンテナンスが必要とする操作のインターフェースと実装
-    page.ts          API レスポンス → DiaryPage
-    pacing.ts        レート制限に合わせた待機
-    error.ts
+  notion/            Notion API との境界。maintenance/diary-store.ts のポートを SDK で実装する
+    client.ts        DiaryStore の実装。レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
+    page.ts          API レスポンス → NotionPage
+    markdown-links.ts  Markdown API が自ブロックへのリンクに畳んだ bookmark を外部 URL へ戻す
+    pacing.ts, error.ts
   diary/             日誌の規則。API に依存しない純粋関数だけを置く
     page.ts          ページの型。NotionPage（読んだまま）と、分類済みの DailyPage / WeeklyPage / MonthlyPage、その集合 DiaryPages
     classification.ts  NotionPage を一度だけ分類して DiaryPages にする（日付・期間キーをここで確定、メモはここで落ちる）
@@ -55,11 +55,12 @@ src/
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     notion-url.ts    Notion 内部 URL・署名付き URL・ページ URL の規則
     jst-date.ts, daily-title.ts, iso-week.ts, calendar-month.ts   日付・タイトルの規則
-  maintenance/       手続き。diary の判断に従って notion を呼ぶ
+  maintenance/       手続き。diary の判断に従って DiaryStore を呼ぶ。notion/ には依存しない
+    diary-store.ts   DiaryStore ポート（日誌データベースへの 7 操作）と ContentRejectedError
     run.ts           1 実行の流れ（Daily → Weekly → Monthly）
     daily.ts         Daily を最新状態にする（今日を作成 → 過去日をロック）
     period.ts        期間ページを最新状態にする（作成 → 転記 → 仕上げ → リネーム・ロック）
-    transfer.ts, refs.ts, external-links.ts, ref-title-lookup.ts
+    transfer.ts, refs.ts, ref-title-lookup.ts
 ```
 
 Weekly と Monthly の違いは `diary/weekly.ts` と `diary/monthly.ts` の定義（期間キーの求め方・比較・タイトル）だけで、判断と手続きは共通です。

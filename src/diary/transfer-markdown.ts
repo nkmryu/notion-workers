@@ -1,10 +1,5 @@
 import { createSectionHeader } from "./markdown-section";
-import {
-  createNotionPageUrl,
-  isSignedFileUrl,
-  matchNotionBlockLinks,
-  replaceNotionBlockLinks,
-} from "./notion-url";
+import { createNotionPageUrl, isSignedFileUrl } from "./notion-url";
 
 // toggle 等の子として置かれた行は先頭にタブが付くため、インデントを保ったまま置換する。
 // Notion がホストするファイルは署名付き URL で返り、短時間で失効するため転記先へは持ち込めない。
@@ -26,27 +21,6 @@ export interface DailyMarkdown {
 
 function createPageMention(pageId: string): string {
   return `<mention-page url="${createNotionPageUrl(pageId)}"/>`;
-}
-
-export function extractNotionBlockLinkIds(markdown: string): readonly string[] {
-  return [
-    ...new Set(
-      matchNotionBlockLinks(markdown).flatMap<string>(function (match) {
-        return match[1] === undefined ? [] : [match[1]];
-      }),
-    ),
-  ];
-}
-
-export function restoreBlockLinks(
-  markdown: string,
-  blockUrls: ReadonlyMap<string, string>,
-): string {
-  return replaceNotionBlockLinks(markdown, function (blockId, original) {
-    const url = blockUrls.get(blockId);
-
-    return url === undefined ? original : `[${url}](${url})`;
-  });
 }
 
 function sanitizeDailyMarkdown(daily: DailyMarkdown): string {

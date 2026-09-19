@@ -2,19 +2,16 @@ import type { DailyPage, PeriodArchive, PeriodPage } from "../diary/page";
 import type { PeriodDefinition } from "../diary/period";
 import type { TransferPlan } from "../diary/transfer-plan";
 import type { DailyMarkdown } from "../diary/transfer-markdown";
-import type { NotionDiary } from "../notion/client";
+import type { DiaryStore } from "./diary-store";
 
 import { parseDailyTitleDateKey } from "../diary/daily-title";
-import { extractSectionTitles } from "../diary/markdown-section";
-import { hasRefsSection } from "../diary/refs";
+import { REFS_HEADING_TITLE } from "../diary/refs";
 import {
   createTransferFallbackSection,
   createTransferSection,
 } from "../diary/transfer-markdown";
 import { planTransfers } from "../diary/transfer-plan";
-import { isNotionValidationError } from "../notion/error";
-import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
-import { restoreExternalLinks } from "./external-links";
+import { ContentRejectedError } from "./diary-store";
 
 export interface TransferResult<K> {
   readonly archives: readonly PeriodArchive<K>[];
@@ -26,23 +23,22 @@ const EMPTY_ARCHIVE_STATE = { transferredDateKeys: [], hasRefs: false } as const
 
 // 転記状態は期間ページの本文から読む。日付見出しが転記済みの日、Refs 見出しが Refs の有無を表す。
 async function readArchiveState(
-  diary: NotionDiary,
+  diary: DiaryStore,
   pageId: string,
 ): Promise<Pick<PeriodArchive<unknown>, "transferredDateKeys" | "hasRefs">> {
-  const markdown = await diary.getPageMarkdown(pageId);
-  await sleep(READ_INTERVAL_MS);
+  const sectionTitles = await diary.getSectionTitles(pageId);
 
   return {
-    transferredDateKeys: extractSectionTitles(markdown).flatMap(function (title) {
+    transferredDateKeys: sectionTitles.flatMap(function (title) {
       const dateKey = parseDailyTitleDateKey(title);
       return dateKey === null ? [] : [dateKey];
     }),
-    hasRefs: hasRefsSection(markdown),
+    hasRefs: sectionTitles.includes(REFS_HEADING_TITLE),
   };
 }
 
 async function listArchives<K>(
-  diary: NotionDiary,
+  diary: DiaryStore,
   period: PeriodDefinition<K>,
   periodPages: readonly PeriodPage<K>[],
   createdPageIds: readonly string[],
@@ -67,18 +63,13 @@ async function listArchives<K>(
 }
 
 async function readDailyMarkdowns(
-  diary: NotionDiary,
+  diary: DiaryStore,
   dailyPageIds: readonly string[],
 ): Promise<readonly DailyMarkdown[]> {
   let dailies: readonly DailyMarkdown[] = [];
 
   for (const pageId of dailyPageIds) {
-    const markdown = await diary.getPageMarkdown(pageId);
-    await sleep(READ_INTERVAL_MS);
-    dailies = [
-      ...dailies,
-      { pageId, markdown: await restoreExternalLinks(diary, markdown) },
-    ];
+    dailies = [...dailies, { pageId, markdown: await diary.getPageMarkdown(pageId) }];
   }
 
   return dailies;
@@ -97,7 +88,7 @@ function recordTransferred<K>(
 }
 
 async function transferOne(
-  diary: NotionDiary,
+  diary: DiaryStore,
   plan: TransferPlan,
 ): Promise<{ readonly fellBack: boolean }> {
   const dailies = await readDailyMarkdowns(diary, plan.dailyPageIds);
@@ -107,26 +98,22 @@ async function transferOne(
       plan.destinationPageId,
       createTransferSection(plan.title, dailies),
     );
-    await sleep(WRITE_INTERVAL_MS);
     return { fellBack: false };
   } catch (error: unknown) {
-    // 認証・レート制限・通信障害まで継続すると復旧判断を誤るため、書式検証エラー以外は再 throw する。
-    if (!isNotionValidationError(error)) {
+    // 認証・レート制限・通信障害まで継続すると復旧判断を誤るため、本文の拒否以外は再 throw する。
+    if (!(error instanceof ContentRejectedError)) {
       throw error;
     }
-
-    await sleep(WRITE_INTERVAL_MS);
     await diary.appendMarkdown(
       plan.destinationPageId,
       createTransferFallbackSection(plan.title, plan.dailyPageIds),
     );
-    await sleep(WRITE_INTERVAL_MS);
     return { fellBack: true };
   }
 }
 
 export async function transferEndedDailies<K>(
-  diary: NotionDiary,
+  diary: DiaryStore,
   period: PeriodDefinition<K>,
   dailies: readonly DailyPage[],
   periodPages: readonly PeriodPage<K>[],

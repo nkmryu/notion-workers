@@ -1,6 +1,7 @@
 import type { Client } from "@notionhq/client";
 
-import type { NotionPage } from "../diary/page";
+import { ContentRejectedError } from "../maintenance/diary-store";
+import type { DiaryStore } from "../maintenance/diary-store";
 
 import {
   collectAllDataSourceRows,
@@ -9,21 +10,11 @@ import {
 } from "@notionhq/client";
 
 import { JST_TIME_ZONE } from "../diary/jst-date";
+import { extractSectionTitles } from "../diary/markdown-section";
+import { isNotionValidationError } from "./error";
+import { extractBlockLinkIds, restoreBlockLinks } from "./markdown-links";
+import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
 import { parseDataSourceTitleKey, parseNotionPage } from "./page";
-
-// メンテナンス処理が日誌データベースに対して必要とする操作。SDK の Client はこの背後に閉じ込める。
-export interface NotionDiary {
-  readonly listPages: () => Promise<readonly NotionPage[]>;
-  readonly createPageFromTemplate: (input: {
-    readonly templateId: string;
-    readonly title: string;
-  }) => Promise<string>;
-  readonly renamePage: (pageId: string, title: string) => Promise<void>;
-  readonly lockPage: (pageId: string) => Promise<void>;
-  readonly getPageMarkdown: (pageId: string) => Promise<string>;
-  readonly appendMarkdown: (pageId: string, content: string) => Promise<void>;
-  readonly getBlockUrl: (blockId: string) => Promise<string | null>;
-}
 
 function createTitleProperty(title: string): {
   readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
@@ -31,10 +22,11 @@ function createTitleProperty(title: string): {
   return { title: [{ type: "text", text: { content: title } }] };
 }
 
-export function createNotionDiary(
+// Notion API の平均 3 req/s 制限に合わせ、各操作の後に待機する。429 と 5xx の再試行は SDK が行う。
+export function createNotionDiaryStore(
   client: Client,
   dataSourceId: string,
-): NotionDiary {
+): DiaryStore {
   let titleKeyPromise: Promise<string> | null = null;
 
   // タイトルプロパティ名は data source ごとに固定なので、1 実行で 1 回だけ取得する。
@@ -50,6 +42,26 @@ export function createNotionDiary(
       });
 
     return titleKeyPromise;
+  }
+
+  // 外部 URL を持つのは bookmark・embed・link_preview の 3 種。それ以外の型は補完対象にしない。
+  async function getBlockUrl(blockId: string): Promise<string | null> {
+    const block = await client.blocks.retrieve({ block_id: blockId });
+
+    if (!isFullBlock(block)) {
+      return null;
+    }
+
+    switch (block.type) {
+      case "bookmark":
+        return block.bookmark.url || null;
+      case "embed":
+        return block.embed.url || null;
+      case "link_preview":
+        return block.link_preview.url || null;
+      default:
+        return null;
+    }
   }
 
   return {
@@ -73,6 +85,7 @@ export function createNotionDiary(
           timezone: JST_TIME_ZONE,
         },
       });
+      await sleep(WRITE_INTERVAL_MS);
 
       return page.id;
     },
@@ -82,43 +95,56 @@ export function createNotionDiary(
         page_id: pageId,
         properties: { [await getTitleKey()]: createTitleProperty(title) },
       });
+      await sleep(WRITE_INTERVAL_MS);
     },
 
     async lockPage(pageId) {
       await client.pages.update({ page_id: pageId, is_locked: true });
+      await sleep(WRITE_INTERVAL_MS);
+    },
+
+    async getSectionTitles(pageId) {
+      const response = await client.pages.retrieveMarkdown({ page_id: pageId });
+      await sleep(READ_INTERVAL_MS);
+
+      return extractSectionTitles(response.markdown);
     },
 
     async getPageMarkdown(pageId) {
       const response = await client.pages.retrieveMarkdown({ page_id: pageId });
-      return response.markdown;
+      await sleep(READ_INTERVAL_MS);
+      let blockUrls: ReadonlyMap<string, string> = new Map();
+
+      for (const blockId of extractBlockLinkIds(response.markdown)) {
+        const url = await getBlockUrl(blockId);
+        await sleep(READ_INTERVAL_MS);
+
+        if (url !== null) {
+          blockUrls = new Map([...blockUrls, [blockId, url]]);
+        }
+      }
+
+      return restoreBlockLinks(response.markdown, blockUrls);
     },
 
     async appendMarkdown(pageId, content) {
-      await client.pages.updateMarkdown({
-        page_id: pageId,
-        type: "insert_content",
-        insert_content: { content, position: { type: "end" } },
-      });
-    },
+      try {
+        await client.pages.updateMarkdown({
+          page_id: pageId,
+          type: "insert_content",
+          insert_content: { content, position: { type: "end" } },
+        });
+      } catch (error: unknown) {
+        // 書式検証エラーだけをポートの契約へ変換する。認証・レート制限・通信障害はそのまま上げる。
+        if (isNotionValidationError(error)) {
+          throw new ContentRejectedError(pageId, error);
+        }
 
-    async getBlockUrl(blockId) {
-      const block = await client.blocks.retrieve({ block_id: blockId });
-
-      if (!isFullBlock(block)) {
-        return null;
-      }
-
-      // 外部 URL を持つのはこの 3 種。それ以外の型は補完対象にしない。
-      switch (block.type) {
-        case "bookmark":
-          return block.bookmark.url || null;
-        case "embed":
-          return block.embed.url || null;
-        case "link_preview":
-          return block.link_preview.url || null;
-        default:
-          return null;
+        throw error;
+      } finally {
+        await sleep(WRITE_INTERVAL_MS);
       }
     },
+
   };
 }

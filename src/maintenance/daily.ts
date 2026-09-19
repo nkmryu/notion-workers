@@ -1,9 +1,8 @@
 import type { DailyPage } from "../diary/page";
-import type { NotionDiary } from "../notion/client";
+import type { DiaryStore } from "./diary-store";
 
 import { PAGE_ACTION_TYPE, decideDailyPageAction, shouldCreateTodayPage } from "../diary/daily";
 import { formatDailyTitle } from "../diary/daily-title";
-import { WRITE_INTERVAL_MS, sleep } from "../notion/pacing";
 
 export interface DailyMaintenanceResult {
   readonly created: number;
@@ -13,7 +12,7 @@ export interface DailyMaintenanceResult {
 
 // Daily を最新状態にする: 今日の分が無ければ作り、今日の分のタイトルを整え、過去日をロックする。
 export async function maintainDailies(
-  diary: NotionDiary,
+  diary: DiaryStore,
   templateId: string,
   dailies: readonly DailyPage[],
   now: Date,
@@ -22,7 +21,6 @@ export async function maintainDailies(
 
   if (shouldCreateTodayPage(dailies, now)) {
     await diary.createPageFromTemplate({ templateId, title: formatDailyTitle(now) });
-    await sleep(WRITE_INTERVAL_MS);
     created = 1;
   }
 
@@ -41,8 +39,6 @@ export async function maintainDailies(
     } else {
       continue;
     }
-
-    await sleep(WRITE_INTERVAL_MS);
   }
 
   return { created, renames, locks };
