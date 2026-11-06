@@ -8,7 +8,13 @@ import { describe, expect, it } from "vitest";
 
 import { monthly } from "../../domain/monthly";
 import { weekly } from "../../domain/weekly";
-import { parseDataSourceTitleKey, toDailyPage, toPeriodPage } from "./page-mapping";
+import {
+  createTitleProperty,
+  parseDataSourceTitleKey,
+  toDailyPage,
+  toHabitPage,
+  toPeriodPage,
+} from "./page-mapping";
 
 // SDK のレスポンス型は全フィールド必須なので、テストで検証する項目だけを持つ最小フィクスチャを型へ合わせる。
 function createRow(
@@ -127,5 +133,39 @@ describe("toPeriodPage", () => {
     expect(
       toPeriodPage(monthly, createRow("", { created_time: "2026-07-01T00:00:00.000Z" })).key,
     ).toEqual(Temporal.PlainYearMonth.from({ year: 2026, month: 7 }));
+  });
+});
+
+describe("toHabitPage", () => {
+  it("タイトルの日付を習慣ページの日付にする", () => {
+    // 習慣データベースの行を、タイトルが示す日の習慣ページとして読むことを保証する。
+    expect(toHabitPage(createRow("26.07.22（水）", { id: "habit" }))).toMatchObject({
+      id: "habit",
+      title: "26.07.22（水）",
+      date: Temporal.PlainDate.from("2026-07-22"),
+    });
+  });
+
+  it("日付として読めないタイトルの行は、日付を持たない習慣ページにする", () => {
+    // 種別の列が無い習慣データベースで、メモの行を失敗させないことを保証する。
+    expect(toHabitPage(createRow("メモ")).date).toBeNull();
+  });
+
+  it("ページ詳細以外の行は失敗する", () => {
+    // 部分レスポンスを日付の無い行として黙って読み飛ばさないことを保証する。
+    const row = { object: "page", id: "partial" } as unknown as PageObjectResponse;
+
+    expect(function () {
+      toHabitPage(row);
+    }).toThrow("query 結果にページ以外が含まれています: partial");
+  });
+});
+
+describe("createTitleProperty", () => {
+  it("タイトルを 1 つの text として送る形にする", () => {
+    // ページ作成とリネームで Notion が受け付けるタイトルの形を保証する。
+    expect(createTitleProperty("26.07.22（水）")).toEqual({
+      title: [{ type: "text", text: { content: "26.07.22（水）" } }],
+    });
   });
 });

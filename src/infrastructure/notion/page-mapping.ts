@@ -9,6 +9,7 @@ import type { PeriodDefinition } from "../../domain/period";
 import { isFullPage } from "@notionhq/client";
 
 import { DailyPage } from "../../domain/daily";
+import { HabitPage } from "../../domain/habit";
 import { PERIOD_TYPE } from "../../domain/page";
 import { PeriodPage } from "../../domain/period";
 
@@ -61,6 +62,13 @@ function requireFullPage(row: Row): PageObjectResponse {
   return row;
 }
 
+// ページ作成・リネームで送るタイトルの値。parseTitle の逆向きの写像。
+export function createTitleProperty(title: string): {
+  readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
+} {
+  return { title: [{ type: "text", text: { content: title } }] };
+}
+
 export function parseDataSourceTitleKey(dataSource: DataSourceObjectResponse): string {
   return findTitlePropertyKey(dataSource.properties, "data source");
 }
@@ -87,4 +95,10 @@ export function toPeriodPage<K>(period: PeriodDefinition<K>, row: Row): PeriodPa
     title,
     isLocked: page.is_locked,
   });
+}
+
+export function toHabitPage(row: Row): HabitPage {
+  const page = requireFullPage(row);
+
+  return HabitPage.fromRecord({ id: page.id, title: parseTitle(page.properties) });
 }

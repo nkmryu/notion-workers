@@ -1,5 +1,7 @@
 import type { DailyPage } from "../domain/daily";
 import type { DiaryRepository } from "../domain/diary-repository";
+import type { HabitPage } from "../domain/habit";
+import type { HabitRepository } from "../domain/habit-repository";
 import type { MonthlyPage } from "../domain/monthly";
 import type { PeriodType } from "../domain/page";
 import type { WeeklyPage } from "../domain/weekly";
@@ -79,6 +81,26 @@ export function createFakeDiary(options: FakeDiaryOptions = {}): FakeDiary {
     },
     mentionOf(pageId) {
       return `@${pageId}`;
+    },
+  };
+}
+
+// 習慣のリポジトリ。作成したタイトルを順に記録する。
+export interface FakeHabits extends HabitRepository {
+  readonly createdTitles: readonly string[];
+}
+
+export function createFakeHabits(pages: readonly HabitPage[] = []): FakeHabits {
+  const createdTitles: string[] = [];
+
+  return {
+    createdTitles,
+    async listHabits() {
+      return pages;
+    },
+    async createHabit(title) {
+      createdTitles.push(title);
+      return `habit-${title}`;
     },
   };
 }

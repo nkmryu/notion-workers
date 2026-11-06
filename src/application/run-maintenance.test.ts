@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 
 import type { RecordedCall } from "./testing";
 
-import { dailyOn, periodPageOf } from "../domain/testing";
+import { dailyOn, habitOn, periodPageOf } from "../domain/testing";
 import { monthly } from "../domain/monthly";
 import { weekly } from "../domain/weekly";
 import { runMaintenance } from "./run-maintenance";
-import { createFakeDiary, noPageTitles } from "./testing";
+import { createFakeDiary, createFakeHabits, noPageTitles } from "./testing";
 
 // 2026-08-01（土）: 26.M07 が終わった翌月 1 日。26.W31 は進行中（8/1 は土曜）。
 const firstOfAugust = Temporal.PlainDate.from("2026-08-01");
@@ -37,7 +37,7 @@ describe("runMaintenance: 月が変わった最初の実行", () => {
       markdown,
     });
 
-    const summary = await runMaintenance({ diary, pageTitles: noPageTitles }, firstOfAugust);
+    const summary = await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, firstOfAugust);
 
     expect(methods(diary.calls)).toEqual([
       "lockPage", // d-0730
@@ -69,7 +69,7 @@ describe("runMaintenance: 月が変わった最初の実行", () => {
       },
     });
 
-    await expect(runMaintenance({ diary, pageTitles: noPageTitles }, firstOfAugust)).rejects.toThrow(
+    await expect(runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, firstOfAugust)).rejects.toThrow(
       "Refs の追記に失敗",
     );
     expect(methods(diary.calls).filter((m) => m === "lockPage")).toEqual(["lockPage", "lockPage"]); // Daily 2 件だけ
@@ -90,7 +90,7 @@ describe("runMaintenance: 月が変わった最初の実行", () => {
       },
     });
 
-    const summary = await runMaintenance({ diary, pageTitles: noPageTitles }, firstOfAugust);
+    const summary = await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, firstOfAugust);
 
     expect(methods(diary.calls)).toEqual(["lockPage", "lockPage", "lockPage"]);
     expect(diary.calls[2]).toEqual({ method: "lockPage", pageId: "m-07" });
@@ -101,7 +101,7 @@ describe("runMaintenance: 月が変わった最初の実行", () => {
     // 転記が揃った月を同じ実行で閉じ、追記した見出しが次回の転記状態になることを保証する。
     const diary = createFakeDiary({ dailies: julyDailies, markdown });
 
-    await runMaintenance({ diary, pageTitles: noPageTitles }, firstOfAugust);
+    await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, firstOfAugust);
 
     expect(await diary.getSectionTitles("monthly-26.M07")).toEqual([
       "26.07.30（木）",
@@ -121,7 +121,7 @@ describe("runMaintenance: 週が変わった最初の実行", () => {
       markdown: { "d-0725": "土曜\n", "d-0726": "日曜\n" },
     });
 
-    const summary = await runMaintenance({ diary, pageTitles: noPageTitles }, monday);
+    const summary = await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, monday);
 
     expect(methods(diary.calls)).toEqual([
       "lockPage", // d-0726
@@ -135,5 +135,50 @@ describe("runMaintenance: 週が変わった最初の実行", () => {
     ]);
     expect(summary.weekly).toMatchObject({ created: 1, daysTransferred: 2, renames: 1, locks: 1 });
     expect(summary.monthly).toMatchObject({ created: 0, daysTransferred: 2, locks: 0 });
+  });
+});
+
+describe("runMaintenance: 習慣", () => {
+  it("今日の習慣ページが無ければ、今日のタイトルで 1 件だけ作る", async () => {
+    // 過去日の習慣ページしか無い日に、今日の分を作ることを保証する。
+    const habits = createFakeHabits([habitOn("2026-07-31")]);
+
+    const summary = await runMaintenance(
+      { diary: createFakeDiary(), habits, pageTitles: noPageTitles },
+      firstOfAugust,
+    );
+
+    expect(habits.createdTitles).toEqual(["26.08.01（土）"]);
+    expect(summary.habit).toEqual({ created: 1 });
+  });
+
+  it("今日の習慣ページがあれば作らない", async () => {
+    // 2:00 に作った日の 7:00 の再実行で、同じ日のページを二重に作らないことを保証する。
+    const habits = createFakeHabits([habitOn("2026-07-31"), habitOn("2026-08-01")]);
+
+    const summary = await runMaintenance(
+      { diary: createFakeDiary(), habits, pageTitles: noPageTitles },
+      firstOfAugust,
+    );
+
+    expect(habits.createdTitles).toEqual([]);
+    expect(summary.habit).toEqual({ created: 0 });
+  });
+
+  it("日誌の Monthly の処理が失敗する実行でも、今日の習慣ページは作られている", async () => {
+    // 習慣の作成を転記と Refs より前に行い、日誌の後段の失敗に巻き込まないことを保証する。
+    const habits = createFakeHabits();
+    const diary = createFakeDiary({
+      dailies: [dailyOn("2026-07-31", { id: "d-0731" })],
+      markdown: { "d-0731": "本文 [記事](https://example.com/a)\n" },
+      rejectAppend(_pageId, content) {
+        return content.includes("## Refs") ? new Error("Refs の追記に失敗") : null;
+      },
+    });
+
+    await expect(
+      runMaintenance({ diary, habits, pageTitles: noPageTitles }, firstOfAugust),
+    ).rejects.toThrow("Refs の追記に失敗");
+    expect(habits.createdTitles).toEqual(["26.08.01（土）"]);
   });
 });

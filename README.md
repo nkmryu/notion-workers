@@ -1,12 +1,12 @@
 # Notion Workers
 
-Notion の日誌データベースを毎日整える GitHub Actions ジョブと、そのローカル CLI。Daily の作成とロック、Weekly / Monthly の作成と転記、Monthly の Refs 生成を 1 回の実行で行う。Notion API へは `@notionhq/client` でアクセスする。
+Notion の日誌データベース（「ナレッジ」）と習慣データベース（「習慣」）を毎日整える GitHub Actions ジョブと、そのローカル CLI。Daily の作成とロック、習慣ページの作成、Weekly / Monthly の作成と転記、Monthly の Refs 生成を 1 回の実行で行う。Notion API へは `@notionhq/client` でアクセスする。
 
 ## まず動かす
 
 ```sh
 npm install                 # Node.js 24（.node-version）
-cp .env.example .env        # NOTION_TOKEN と NOTION_DATA_SOURCE_ID を記入する（テンプレート ID は記入済み）
+cp .env.example .env        # NOTION_TOKEN・NOTION_DATA_SOURCE_ID・NOTION_HABIT_DATA_SOURCE_ID を記入する（テンプレート ID は記入済み）
 npm run maintain            # 定期処理を手元で 1 回だけ実行する
 ```
 
@@ -14,15 +14,18 @@ npm run maintain            # 定期処理を手元で 1 回だけ実行する
 
 ## 1 回の実行で何が起きるか
 
-`npm run maintain`（`src/main.ts`）は Daily → Weekly → Monthly の順に、種別ごとに完結して処理する。Weekly / Monthly の段階は自分の種別のページ一覧と Daily 一覧だけを受け取る。
+`npm run maintain`（`src/main.ts`）は Daily → 習慣 → Weekly → Monthly の順に、種別ごとに完結して処理する。Weekly / Monthly の段階は自分の種別のページ一覧と Daily 一覧だけを受け取る。習慣だけが別のデータベースで、ほかの段階とページを共有しない。
 
 | 段階 | すること |
 |---|---|
 | 1. Daily | 今日のページが無ければ作り、タイトルを `26.07.22（水）` に整える。終了した Daily のうち未ロックのものをロックする |
-| 2. Weekly | 作成 → 転記 → リネーム → ロック |
-| 3. Monthly | 作成 → 転記 → Refs → リネーム → ロック |
+| 2. 習慣 | 今日のページが無ければ、タイトル `26.07.22（水）` だけの空のページを作る。過去日のページには触れない |
+| 3. Weekly | 作成 → 転記 → リネーム → ロック |
+| 4. Monthly | 作成 → 転記 → Refs → リネーム → ロック |
 
 「終了した Daily」は今日より前の日付の Daily を指す。今日の分は書きかけとみなし、転記もロックもしない。
+
+習慣は転記より前に処理する。Weekly / Monthly の段階が失敗した実行でも、今日の習慣ページは作られている。
 
 Weekly / Monthly の各操作は次のとおり。
 
@@ -43,6 +46,7 @@ Weekly / Monthly は週・月が変わった最初の実行で作られる。そ
 | 処理 | 冪等キー |
 |---|---|
 | 今日の Daily 作成 | 日付 |
+| 今日の習慣ページ作成 | 日付 |
 | Weekly / Monthly 作成 | 週・月 |
 | 転記 | 転記先の日付見出し（週次と月次で独立に判定） |
 | Refs | `Refs` 見出し |
@@ -84,10 +88,19 @@ Notion の Markdown API で行う。
 - Daily の日付はタイトル `26.07.22（水）` から決める（曜日文字は使わない）。テンプレート適用中で空タイトルなら作成日（JST）を使う。日付でも空でもないタイトルの Daily は不整合として実行を止める
 - Weekly / Monthly の期間はタイトル `26.W30` / `26.M07` から決める。作成直後などで読めなければ作成日の期間とし、リネームで正しいタイトルに整える
 
+## 習慣ページ
+
+習慣データベースは日誌とは別のデータベースで、1 日 1 ページに起床時刻・就寝時刻・運動・体重を記録する。
+
+- 作るのは今日の 1 ページだけ。ページが無い過去日をさかのぼって作らない
+- テンプレートは使わない。プロパティは空のまま作り、人が記入する
+- ロックもリネームもしない。就寝時刻は翌日以降に記入するため
+- 日付はタイトル `26.07.22（水）` から決める（曜日文字は使わない）。習慣データベースには `type` が無いので、全ページを対象にする。日付として読めないタイトルのページは、どの日の分でもないページとして読み飛ばす。存在しない日付（`26.02.30（月）` など）のタイトルは不整合として実行を止める
+
 ## セットアップ
 
 1. Node.js 24（`.node-version`）を用意し `npm install` を実行する
-2. Notion Integration を作り、日誌データベースと 3 種類のテンプレートへアクセス権を付与する
+2. Notion Integration を作り、日誌データベース・習慣データベースと 3 種類のテンプレートへアクセス権を付与する
 3. Notion 側の繰り返しテンプレート設定をオフにする
 4. `type` select を日次テンプレートに `📝 Daily`、週次テンプレートに `Weekly`、月次テンプレートに `Monthly` と設定する（種別はテンプレートが付ける）
 5. `.env.example` を `.env` へコピーし、次の環境変数を記入する
@@ -96,6 +109,7 @@ Notion の Markdown API で行う。
 |---|---|
 | `NOTION_TOKEN` | Notion Integration のトークン（秘密） |
 | `NOTION_DATA_SOURCE_ID` | 日誌データベースの data source ID（秘密）。database ID ではない。データベース URL の ID を `database_id` として `GET /v1/databases/{database_id}` を呼び、`data_sources[0].id` を取得して保存する（Notion の 2025-09-03 移行ガイドが推奨する discovery step） |
+| `NOTION_HABIT_DATA_SOURCE_ID` | 習慣データベースの data source ID（秘密）。取得方法は `NOTION_DATA_SOURCE_ID` と同じ |
 | `NOTION_TEMPLATE_ID` | 日次テンプレートのページ ID |
 | `NOTION_WEEKLY_TEMPLATE_ID` | 週次テンプレートのページ ID |
 | `NOTION_MONTHLY_TEMPLATE_ID` | 月次テンプレートのページ ID |
@@ -104,7 +118,7 @@ Notion の Markdown API で行う。
 
 `.github/workflows/maintain.yml` が JST 2:00 と 7:00（UTC `0 17 * * *` と `0 22 * * *`）に `npm run maintain` を実行する。2:00 が本番で、7:00 は 2:00 が失敗したときの再試行（冪等なので成功時は何もしない）。`workflow_dispatch` で手動実行もできる。
 
-- リポジトリの Actions secrets に `NOTION_TOKEN` と `NOTION_DATA_SOURCE_ID` を登録する。テンプレート ID は秘密ではないため workflow ファイルに直接定義している
+- リポジトリの Actions secrets に `NOTION_TOKEN`・`NOTION_DATA_SOURCE_ID`・`NOTION_HABIT_DATA_SOURCE_ID` を登録する。テンプレート ID は秘密ではないため workflow ファイルに直接定義している
 - `concurrency` で同時実行を防ぎ、同じ週・月のページを二重に作らない
 - GitHub Actions の schedule トリガーは数分から数十分遅れることがある。処理は実行時刻の JST 日付を基準にするため、遅延しても翌日分を誤って作らない
 - 実行結果は各 run のログで確認する。処理の末尾に作成・転記・リネーム・ロックの件数を 1 行で出力する
@@ -117,7 +131,7 @@ npm test
 ```
 
 - ドメインのテストは不変条件（転記が揃うまでロックしない、Refs は一度だけ、など）を直接検証する
-- `application/run-maintenance.test.ts` はインメモリのリポジトリで、月初・週初の実行が「作成 → 転記 → Refs → リネーム → ロック」の順に 1 回の実行で進むこと、Refs の追記に失敗したらロックしないことを呼び出し順で検証する
+- `application/run-maintenance.test.ts` はインメモリのリポジトリで、月初・週初の実行が「作成 → 転記 → Refs → リネーム → ロック」の順に 1 回の実行で進むこと、Refs の追記に失敗したらロックしないこと、その実行でも今日の習慣ページは作られていることを検証する
 
 ## コード構成
 
@@ -130,6 +144,7 @@ src/
   domain/            ドメイン層。純粋関数とエンティティだけを置く
     page.ts          種別・アクションの定数
     daily.ts         DailyPage エンティティ（fromRecord で生成。期待タイトル・終了判定・操作の決定）とタイトル規則
+    habit.ts         HabitPage エンティティ（タイトルから日付を決める）と、今日の分を作るかの判定
     period.ts        PeriodPage（自分の期間規則を持つ）と、転記状態を知った PeriodArchive（転記完了とロックの不変条件を守る）、作成計画
     weekly.ts, monthly.ts   ISO 週 / 暦月の規則（PeriodDefinition）とタイトル
     jst.ts           JST の暦日（Temporal.PlainDate）への変換
@@ -138,10 +153,12 @@ src/
     refs.ts          Refs の収集（本文のリンクのうち内部リンクを除く）・タイトルの優先順位・セクション組み立て・生成判定
     markdown-section.ts     転記と Refs が共有するセクション（divider + 見出し 2）の規則
     diary-repository.ts     DiaryRepository インターフェース（種別ごとの一覧、作成、リネーム、ロック、本文の読み書き）と ContentRejectedError
+    habit-repository.ts     HabitRepository インターフェース（一覧と作成だけ）
     testing.ts              ドメインのテスト用。エンティティの生成規則を通すファクトリ関数
   application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
-    run-maintenance.ts      1 実行の流れ（Daily → Weekly → Monthly）
+    run-maintenance.ts      1 実行の流れ（Daily → 習慣 → Weekly → Monthly）
     maintain-dailies.ts     Daily を最新状態にする（今日を作成 → 過去日をロック）
+    maintain-habits.ts      習慣を最新状態にする（今日を作成）
     maintain-period.ts      期間ページの準備（作成 → 転記状態の読み取り → 転記）と確定（リネーム・ロック）
     transfer-dailies.ts     終了した Daily の転記
     generate-refs.ts        Monthly の Refs 生成。run-maintenance が準備と確定の間に挟む
@@ -151,7 +168,8 @@ src/
   infrastructure/    外部システムの実装
     notion/
       diary-repository.ts   DiaryRepository の Notion SDK 実装。種別ごとの取得、テンプレートからの作成、レート制限の待機、bookmark の外部 URL 復元、書式拒否の変換をここで吸収
-      page-mapping.ts       行 → DailyPage / WeeklyPage / MonthlyPage の写像（type select の選択肢名もここ）
+      habit-repository.ts   HabitRepository の Notion SDK 実装。全行の取得と、テンプレートなしの作成
+      page-mapping.ts       行 → DailyPage / WeeklyPage / MonthlyPage / HabitPage の写像（type select の選択肢名もここ）
       markdown-normalization.ts   Markdown API の方言（<unknown/>・<embed>・署名付き URL・自ブロックへのリンク）をドメインが読める Markdown へ正規化
       pacing.ts, error.ts
     web/
@@ -162,7 +180,7 @@ src/
     lazy.ts          初回だけ計算するメモ化。本番コードで唯一の可変変数をここに閉じる
 ```
 
-リポジトリは 1 つ（`DiaryRepository`）で、Daily / Weekly / Monthly の一覧をそれぞれ返す。3 種は同じ Notion データベースの行で、リネーム・ロック・本文の読み書きも共通なので、集約ごとに分けていない。
+日誌のリポジトリは 1 つ（`DiaryRepository`）で、Daily / Weekly / Monthly の一覧をそれぞれ返す。3 種は同じ Notion データベースの行で、リネーム・ロック・本文の読み書きも共通なので、集約ごとに分けていない。習慣は別のデータベースで、操作も一覧と作成だけなので、`HabitRepository` に分けている。
 
 ## 日付の扱い
 

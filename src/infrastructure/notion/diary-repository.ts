@@ -22,16 +22,11 @@ import { weekly } from "../../domain/weekly";
 import {
   PAGE_TYPE_PROPERTY_NAME,
   PAGE_TYPE_SELECT_NAME,
+  createTitleProperty,
   parseDataSourceTitleKey,
   toDailyPage,
   toPeriodPage,
 } from "./page-mapping";
-
-function createTitleProperty(title: string): {
-  readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
-} {
-  return { title: [{ type: "text", text: { content: title } }] };
-}
 
 // Notion API の平均 3 req/s 制限に合わせ、各操作の後に待機する。429 と 5xx の再試行は SDK が行う。
 export interface NotionDiaryLocation {
