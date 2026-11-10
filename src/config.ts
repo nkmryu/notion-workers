@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-import type { WebPageTitleLookup } from "./application/web-page-title-lookup";
 import type { DiaryRepository } from "./domain/diary-repository";
 import type { HabitRepository } from "./domain/habit-repository";
 
@@ -8,7 +7,6 @@ import { Client } from "@notionhq/client";
 
 import { createNotionDiaryRepository } from "./infrastructure/notion/diary-repository";
 import { createNotionHabitRepository } from "./infrastructure/notion/habit-repository";
-import { createWebPageTitleLookup } from "./infrastructure/web/page-title-lookup";
 
 const NOTION_VERSION = "2026-03-11";
 
@@ -16,7 +14,6 @@ const NOTION_VERSION = "2026-03-11";
 export interface Dependencies {
   readonly diary: DiaryRepository;
   readonly habits: HabitRepository;
-  readonly pageTitles: WebPageTitleLookup;
 }
 
 function getRequiredEnv(name: string): string {
@@ -38,15 +35,10 @@ export function loadDependencies(): Dependencies {
   return {
     diary: createNotionDiaryRepository(client, {
       dataSourceId: getRequiredEnv("NOTION_DATA_SOURCE_ID"),
-      templates: {
-        daily: getRequiredEnv("NOTION_TEMPLATE_ID"),
-        weekly: getRequiredEnv("NOTION_WEEKLY_TEMPLATE_ID"),
-        monthly: getRequiredEnv("NOTION_MONTHLY_TEMPLATE_ID"),
-      },
+      dailyTemplateId: getRequiredEnv("NOTION_TEMPLATE_ID"),
     }),
     habits: createNotionHabitRepository(client, {
       dataSourceId: getRequiredEnv("NOTION_HABIT_DATA_SOURCE_ID"),
     }),
-    pageTitles: createWebPageTitleLookup(),
   };
 }

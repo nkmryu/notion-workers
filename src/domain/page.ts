@@ -1,11 +1,5 @@
-// 状態・種別は snake_case の文字列で表し、本番コードではこの定数を参照する。
-export const PERIOD_TYPE = {
-  weekly: "weekly",
-  monthly: "monthly",
-} as const;
-export type PeriodType = (typeof PERIOD_TYPE)[keyof typeof PERIOD_TYPE];
-
 // ページに対して行う操作。「何もしない」は空の配列で表す。
+// 操作の種類は snake_case の文字列で表し、本番コードではこの定数を参照する。
 export const PAGE_ACTION_TYPE = {
   rename: "rename",
   lock: "lock",

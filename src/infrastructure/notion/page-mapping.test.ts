@@ -6,14 +6,11 @@ import type {
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
-import { monthly } from "../../domain/monthly";
-import { weekly } from "../../domain/weekly";
 import {
   createTitleProperty,
   parseDataSourceTitleKey,
   toDailyPage,
   toHabitPage,
-  toPeriodPage,
 } from "./page-mapping";
 
 // SDK のレスポンス型は全フィールド必須なので、テストで検証する項目だけを持つ最小フィクスチャを型へ合わせる。
@@ -111,28 +108,6 @@ describe("toDailyPage", () => {
     expect(function () {
       toDailyPage(row);
     }).toThrow("query 結果にページ以外が含まれています: partial");
-  });
-});
-
-describe("toPeriodPage", () => {
-  it("タイトルの週を作成日より優先する", () => {
-    // インポート後もタイトルが示す ISO 週へ Weekly を帰属させることを保証する。
-    expect(
-      toPeriodPage(weekly, createRow("26.W29", { created_time: "2026-07-26T03:00:00.000Z" })),
-    ).toMatchObject({
-      period: weekly,
-      id: "page-id",
-      title: "26.W29",
-      isLocked: false,
-      key: { year: 2026, week: 29 },
-    });
-  });
-
-  it("タイトルが読めなければ作成日の期間にする", () => {
-    // テンプレート適用中の空タイトルでも期間を識別できることを保証する。
-    expect(
-      toPeriodPage(monthly, createRow("", { created_time: "2026-07-01T00:00:00.000Z" })).key,
-    ).toEqual(Temporal.PlainYearMonth.from({ year: 2026, month: 7 }));
   });
 });
 

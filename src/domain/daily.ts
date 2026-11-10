@@ -93,7 +93,7 @@ export class DailyPage {
     return this.date.equals(date);
   }
 
-  // 今日より前の日は書き終えている。今日の分は書きかけなので転記もロックもしない。
+  // 今日より前の日は書き終えている。今日の分は書きかけなのでロックしない。
   isEnded(today: Temporal.PlainDate): boolean {
     return Temporal.PlainDate.compare(this.date, today) < 0;
   }

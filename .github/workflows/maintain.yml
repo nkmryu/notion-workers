@@ -9,7 +9,7 @@ on:
 
   workflow_dispatch:
 
-# 同時に走ると同じ週・月のページを二重作成し得るため、実行を直列化する。
+# 同時に走ると同じ日の Daily・習慣ページを二重作成し得るため、実行を直列化する。
 concurrency:
   group: maintain
   cancel-in-progress: false
@@ -34,5 +34,3 @@ jobs:
           NOTION_DATA_SOURCE_ID: ${{ secrets.NOTION_DATA_SOURCE_ID }}
           NOTION_HABIT_DATA_SOURCE_ID: ${{ secrets.NOTION_HABIT_DATA_SOURCE_ID }}
           NOTION_TEMPLATE_ID: 3a1372a1dbcd8014b380e2c11c3601d6
-          NOTION_WEEKLY_TEMPLATE_ID: 3a1372a1dbcd801381e1e6db3c2adaa6
-          NOTION_MONTHLY_TEMPLATE_ID: 3a2372a1dbcd80e9b00decd7e9c2c614
