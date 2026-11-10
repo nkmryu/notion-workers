@@ -1,7 +1,7 @@
 import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "../domain/daily";
-import type { DiaryRepository } from "../domain/diary-repository";
+import type { DiaryRepository, NewDaily } from "../domain/diary-repository";
 import type { PageActionCounts } from "./page-actions";
 
 import { formatDailyTitle, shouldCreateTodayPage } from "../domain/daily";
@@ -18,13 +18,15 @@ export async function maintainDailies(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): Promise<DailyMaintenanceResult> {
-  const creations = shouldCreateTodayPage(dailies, today) ? [formatDailyTitle(today)] : [];
+  const creations: readonly NewDaily[] = shouldCreateTodayPage(dailies, today)
+    ? [{ title: formatDailyTitle(today), date: today }]
+    : [];
   const actions = dailies.flatMap(function (daily) {
     return planPageActions(daily.id, daily.decideActions(today));
   });
 
-  await mapSequentially(creations, function (title) {
-    return diary.createDaily(title);
+  await mapSequentially(creations, function (daily) {
+    return diary.createDaily(daily);
   });
   const counts = await applyPageActions(diary, actions);
 

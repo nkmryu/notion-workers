@@ -1,3 +1,5 @@
+import type { Temporal } from "temporal-polyfill";
+
 import type { DailyPage } from "../domain/daily";
 import type { DiaryRepository } from "../domain/diary-repository";
 import type { HabitPage } from "../domain/habit";
@@ -5,7 +7,7 @@ import type { HabitRepository } from "../domain/habit-repository";
 
 // ユースケースのテスト用。呼び出しを順に記録するインメモリのリポジトリ。
 export type RecordedCall =
-  | { readonly method: "createDaily"; readonly title: string }
+  | { readonly method: "createDaily"; readonly title: string; readonly date: Temporal.PlainDate }
   | { readonly method: "renamePage"; readonly pageId: string; readonly title: string }
   | { readonly method: "lockPage"; readonly pageId: string };
 
@@ -21,8 +23,8 @@ export function createFakeDiary(dailies: readonly DailyPage[] = []): FakeDiary {
     async listDailies() {
       return dailies;
     },
-    async createDaily(title) {
-      calls.push({ method: "createDaily", title });
+    async createDaily({ title, date }) {
+      calls.push({ method: "createDaily", title, date });
       return `daily-${title}`;
     },
     async renamePage(pageId, title) {

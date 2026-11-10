@@ -18,7 +18,7 @@ npm run maintain            # 定期処理を手元で 1 回だけ実行する
 
 | 段階 | すること |
 |---|---|
-| 1. Daily | 今日のページが無ければ作り、タイトルを `26.07.22（水）` に整える。終了した Daily のうち未ロックのものをロックする |
+| 1. Daily | 今日のページが無ければ、タイトル `26.07.22（水）` と `date` を入れて作る。今日のページのタイトルを整える。終了した Daily のうち未ロックのものをロックする |
 | 2. 習慣 | 今日のページが無ければ、タイトル `26.07.22（水）` だけの空のページを作る。過去日のページには触れない |
 
 「終了した Daily」は今日より前の日付の Daily を指す。今日の分は書きかけとみなし、ロックしない。
@@ -39,8 +39,9 @@ npm run maintain            # 定期処理を手元で 1 回だけ実行する
 
 日付は 1 日ごとに決まる絶対的な値で、「週末」「月末」は周りの日との関係で決まる相対的な値である。以前は Weekly / Monthly のページを作り、Daily の本文を転記していた。週と月が同時に変わる日の実行では Daily・Weekly・Monthly の 3 ページが一度に増え、週・月のページはまとめ用にしか使われなかった。2026-11-10 に Weekly / Monthly の作成・転記・Refs 生成をやめ、コードを消した（消す前のコードは `8dd7654` にある）。
 
-- カレンダーは `date` で日を決める。コードは `date` を書かない。Daily の作成時に Notion 側で入る（2026-11-10 時点で Daily 791 件すべて、タイトルの日付と一致）
-- コードはタイトルで日を決める。日次テンプレートを変えるときは、作成した Daily に今日の `date` が入ることを確かめる
+- カレンダーは `date` で日を決め、コードはタイトルで日を決める。両者がずれないよう、コードは Daily を作るときにタイトルと同じ日付を `date` に書く（2026-11-10 時点で既存の Daily 791 件はすべて一致）
+- `date` はテンプレートの「今日」に任せない。テンプレートの設定は API から読めないため。作成のリクエストで渡した `date` は、テンプレートの適用後も上書きされない（2026-11-10 に実測）
+- コードが書くのは作成するときだけ。Notion で手で作った Daily の `date` は、テンプレートと手入力のとおりになる
 
 ## ページ種別
 
@@ -62,7 +63,7 @@ npm run maintain            # 定期処理を手元で 1 回だけ実行する
 1. Node.js 24（`.node-version`）を用意し `npm install` を実行する
 2. Notion Integration を作り、日誌データベース・習慣データベースと日次テンプレートへアクセス権を付与する
 3. Notion 側の繰り返しテンプレート設定をオフにする
-4. 日次テンプレートの `type` select を `📝 Daily` にし、`date` に作成日が入るようにする（種別と日付はテンプレートが付ける）
+4. 日次テンプレートの `type` select を `📝 Daily` にする（種別はテンプレートが付け、`date` はコードが書く）
 5. `.env.example` を `.env` へコピーし、次の環境変数を記入する
 
 | 環境変数 | 内容 |
@@ -89,7 +90,7 @@ npm test
 ```
 
 - ドメインのテストは規則（今日の分はロックしない、日付はタイトルから決める、など）を直接検証する
-- `application/run-maintenance.test.ts` はインメモリのリポジトリで、1 回の実行で今日の Daily と習慣ページを作り、過去日の Daily をロックすること、再実行で作成もロックも重ねないことを検証する
+- `application/run-maintenance.test.ts` はインメモリのリポジトリで、1 回の実行で今日の Daily（タイトルと日付）と習慣ページを作り、過去日の Daily をロックすること、再実行で作成もロックも重ねないことを検証する
 
 ## コード構成
 
@@ -104,7 +105,7 @@ src/
     daily.ts         DailyPage エンティティ（fromRecord で生成。期待タイトル・終了判定・操作の決定）とタイトル規則
     habit.ts         HabitPage エンティティ（タイトルから日付を決める）と、今日の分を作るかの判定
     jst.ts           JST の暦日（Temporal.PlainDate）への変換
-    diary-repository.ts     DiaryRepository インターフェース（Daily の一覧、作成、リネーム、ロック）
+    diary-repository.ts     DiaryRepository インターフェース（Daily の一覧、タイトルと日付を渡す作成、リネーム、ロック）
     habit-repository.ts     HabitRepository インターフェース（一覧と作成だけ）
     testing.ts              ドメインのテスト用。エンティティの生成規則を通すファクトリ関数
   application/       アプリケーション層。ユースケースの流れと IO の順序だけを持つ
@@ -115,9 +116,9 @@ src/
     testing.ts              ユースケースのテスト用。呼び出しを記録するインメモリのリポジトリ
   infrastructure/    外部システムの実装
     notion/
-      diary-repository.ts   DiaryRepository の Notion SDK 実装。Daily の取得、テンプレートからの作成、レート制限の待機をここで吸収
+      diary-repository.ts   DiaryRepository の Notion SDK 実装。Daily の取得、テンプレートからの作成（date も書く）、レート制限の待機をここで吸収
       habit-repository.ts   HabitRepository の Notion SDK 実装。全行の取得と、テンプレートなしの作成
-      page-mapping.ts       行 → DailyPage / HabitPage の写像（type select の選択肢名もここ）
+      page-mapping.ts       行 → DailyPage / HabitPage の写像と、送るタイトル・日付の値（type select の選択肢名と date のプロパティ名もここ）
       pacing.ts
   shared/            層に属さない小さな部品
     sequence.ts      mapSequentially（順序依存の IO を可変変数なしに直列適用）と countBy

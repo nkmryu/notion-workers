@@ -9,8 +9,9 @@ import { createFakeDiary, createFakeHabits } from "./testing";
 const firstOfAugust = Temporal.PlainDate.from("2026-08-01");
 
 describe("runMaintenance: Daily", () => {
-  it("今日の Daily が無ければ作り、終了した Daily をロックする", async () => {
+  it("今日の Daily が無ければ今日のタイトルと日付で作り、終了した Daily をロックする", async () => {
     // 1 回の実行で、今日のページの作成と、書き終えた過去日のロックまで進むことを保証する。
+    // カレンダーは日付で日を決めるので、タイトルと同じ日付を渡すことも保証する。
     const diary = createFakeDiary([
       dailyOn("2026-07-30", { id: "d-0730" }),
       dailyOn("2026-07-31", { id: "d-0731" }),
@@ -19,7 +20,7 @@ describe("runMaintenance: Daily", () => {
     const summary = await runMaintenance({ diary, habits: createFakeHabits() }, firstOfAugust);
 
     expect(diary.calls).toEqual([
-      { method: "createDaily", title: "26.08.01（土）" },
+      { method: "createDaily", title: "26.08.01（土）", date: firstOfAugust },
       { method: "lockPage", pageId: "d-0730" },
       { method: "lockPage", pageId: "d-0731" },
     ]);

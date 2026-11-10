@@ -7,6 +7,7 @@ import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
 import {
+  createDateProperty,
   createTitleProperty,
   parseDataSourceTitleKey,
   toDailyPage,
@@ -141,6 +142,15 @@ describe("createTitleProperty", () => {
     // ページ作成とリネームで Notion が受け付けるタイトルの形を保証する。
     expect(createTitleProperty("26.07.22（水）")).toEqual({
       title: [{ type: "text", text: { content: "26.07.22（水）" } }],
+    });
+  });
+});
+
+describe("createDateProperty", () => {
+  it("暦日を時刻なしの start として送る形にする", () => {
+    // カレンダービューが JST の暦日どおりの日に Daily を置くよう、時刻やタイムゾーンを付けないことを保証する。
+    expect(createDateProperty(Temporal.PlainDate.from("2026-11-11"))).toEqual({
+      date: { start: "2026-11-11" },
     });
   });
 });

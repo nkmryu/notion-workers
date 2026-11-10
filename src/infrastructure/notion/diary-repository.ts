@@ -8,8 +8,10 @@ import { JST_TIME_ZONE } from "../../domain/jst";
 import { lazy } from "../../shared/lazy";
 import { WRITE_INTERVAL_MS, sleep } from "./pacing";
 import {
+  DAILY_DATE_PROPERTY_NAME,
   DAILY_TYPE_SELECT_NAME,
   PAGE_TYPE_PROPERTY_NAME,
+  createDateProperty,
   createTitleProperty,
   parseDataSourceTitleKey,
   toDailyPage,
@@ -18,7 +20,7 @@ import {
 // Notion API の平均 3 req/s 制限に合わせ、書き込みの後に待機する。429 と 5xx の再試行は SDK が行う。
 export interface NotionDiaryLocation {
   readonly dataSourceId: string;
-  // 日次テンプレート。type select と date はテンプレートが付ける。
+  // 日次テンプレート。type select はテンプレートが付ける。
   readonly dailyTemplateId: string;
 }
 
@@ -52,10 +54,16 @@ export function createNotionDiaryRepository(
       return rows.map(toDailyPage);
     },
 
-    async createDaily(title) {
+    // date はテンプレートの「今日」に任せず、タイトルと同じ日付をここで書く。
+    // テンプレートの設定は API から読めず、カレンダーの日がずれても気づけないため。
+    // テンプレートは作成後に非同期で適用されるが、リクエストで渡した date は上書きされない（2026-11-10 に実測）。
+    async createDaily({ title, date }) {
       const page = await client.pages.create({
         parent: { type: "data_source_id", data_source_id: dataSourceId },
-        properties: { [await getTitleKey()]: createTitleProperty(title) },
+        properties: {
+          [await getTitleKey()]: createTitleProperty(title),
+          [DAILY_DATE_PROPERTY_NAME]: createDateProperty(date),
+        },
         template: {
           type: "template_id",
           template_id: dailyTemplateId,

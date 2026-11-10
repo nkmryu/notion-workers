@@ -4,6 +4,8 @@ import type {
   QueryDataSourceResponse,
 } from "@notionhq/client";
 
+import type { Temporal } from "temporal-polyfill";
+
 import { isFullPage } from "@notionhq/client";
 
 import { DailyPage } from "../../domain/daily";
@@ -12,6 +14,8 @@ import { HabitPage } from "../../domain/habit";
 // 種別は type select で表され、Notion 上の選択肢名と厳密に一致させる。
 export const PAGE_TYPE_PROPERTY_NAME = "type";
 export const DAILY_TYPE_SELECT_NAME = "📝 Daily";
+// カレンダービューが日を決める date プロパティ。
+export const DAILY_DATE_PROPERTY_NAME = "date";
 
 type Row = QueryDataSourceResponse["results"][number];
 type PageProperties = PageObjectResponse["properties"];
@@ -59,6 +63,13 @@ export function createTitleProperty(title: string): {
   readonly title: [{ readonly type: "text"; readonly text: { readonly content: string } }];
 } {
   return { title: [{ type: "text", text: { content: title } }] };
+}
+
+// ページ作成で送る日付の値。時刻もタイムゾーンも付けず、暦日だけを送る。
+export function createDateProperty(date: Temporal.PlainDate): {
+  readonly date: { readonly start: string };
+} {
+  return { date: { start: date.toString() } };
 }
 
 export function parseDataSourceTitleKey(dataSource: DataSourceObjectResponse): string {
