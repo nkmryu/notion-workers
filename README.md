@@ -116,11 +116,11 @@ Notion の Markdown API で行う。
 
 ## 定期実行（GitHub Actions）
 
-`.github/workflows/maintain.yml` が JST 2:00 と 7:00（UTC `0 17 * * *` と `0 22 * * *`）に `npm run maintain` を実行する。2:00 が本番で、7:00 は 2:00 が失敗したときの再試行（冪等なので成功時は何もしない）。`workflow_dispatch` で手動実行もできる。
+`.github/workflows/maintain.yml` が JST 2:23 と 7:23（UTC `23 17 * * *` と `23 22 * * *`）に `npm run maintain` を実行する。2:23 が本番で、7:23 は 2:23 が失敗したときの再試行（冪等なので成功時は何もしない）。毎時 0 分は schedule が混むため避けている。`workflow_dispatch` で手動実行もできる。
 
 - リポジトリの Actions secrets に `NOTION_TOKEN`・`NOTION_DATA_SOURCE_ID`・`NOTION_HABIT_DATA_SOURCE_ID` を登録する。テンプレート ID は秘密ではないため workflow ファイルに直接定義している
 - `concurrency` で同時実行を防ぎ、同じ週・月のページを二重に作らない
-- GitHub Actions の schedule トリガーは数分から数十分遅れることがある。処理は実行時刻の JST 日付を基準にするため、遅延しても翌日分を誤って作らない
+- GitHub Actions の schedule トリガーは数時間遅れることがあり、取りこぼされることもある（2026-09-21〜11-10 の実績で 1.7〜6.8 時間）。処理は実行時刻の JST 日付を基準にするため、遅延しても翌日分を誤って作らない
 - 実行結果は各 run のログで確認する。処理の末尾に作成・転記・リネーム・ロックの件数を 1 行で出力する
 
 ## 動作確認
