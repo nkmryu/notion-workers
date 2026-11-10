@@ -1,12 +1,17 @@
 import type { Client } from "@notionhq/client";
 
+import { ContentRejectedError } from "../../domain/diary-repository";
 import type { DiaryRepository } from "../../domain/diary-repository";
 
-import { collectAllDataSourceRows, isFullDataSource } from "@notionhq/client";
+import { collectAllDataSourceRows, isFullBlock, isFullDataSource } from "@notionhq/client";
 
 import { JST_TIME_ZONE } from "../../domain/jst";
+import { extractDigestSectionTitles } from "../../domain/markdown-section";
 import { lazy } from "../../shared/lazy";
-import { WRITE_INTERVAL_MS, sleep } from "./pacing";
+import { mapSequentially } from "../../shared/sequence";
+import { isNotionContentRejection } from "./error";
+import { createPageMention, extractBlockLinkIds, normalizeMarkdown } from "./markdown-normalization";
+import { READ_INTERVAL_MS, WRITE_INTERVAL_MS, sleep } from "./pacing";
 import {
   DAILY_DATE_PROPERTY_NAME,
   DAILY_TYPE_SELECT_NAME,
@@ -17,7 +22,7 @@ import {
   toDailyPage,
 } from "./page-mapping";
 
-// Notion API の平均 3 req/s 制限に合わせ、書き込みの後に待機する。429 と 5xx の再試行は SDK が行う。
+// Notion API の平均 3 req/s 制限に合わせ、各操作の後に待機する。429 と 5xx の再試行は SDK が行う。
 export interface NotionDiaryLocation {
   readonly dataSourceId: string;
   // 日次テンプレート。type select はテンプレートが付ける。
@@ -38,6 +43,33 @@ export function createNotionDiaryRepository(
 
     return parseDataSourceTitleKey(dataSource);
   });
+
+  async function retrieveMarkdown(pageId: string): Promise<string> {
+    const response = await client.pages.retrieveMarkdown({ page_id: pageId });
+    await sleep(READ_INTERVAL_MS);
+
+    return response.markdown;
+  }
+
+  // 外部 URL を持つのは bookmark・embed・link_preview の 3 種。それ以外の型は補完対象にしない。
+  async function getBlockUrl(blockId: string): Promise<string | null> {
+    const block = await client.blocks.retrieve({ block_id: blockId });
+
+    if (!isFullBlock(block)) {
+      return null;
+    }
+
+    switch (block.type) {
+      case "bookmark":
+        return block.bookmark.url || null;
+      case "embed":
+        return block.embed.url || null;
+      case "link_preview":
+        return block.link_preview.url || null;
+      default:
+        return null;
+    }
+  }
 
   return {
     // 単純なページネーションは 1 クエリ 10,000 行の上限で黙って打ち切られるため、SDK の全件取得を使う。
@@ -72,7 +104,7 @@ export function createNotionDiaryRepository(
       });
       await sleep(WRITE_INTERVAL_MS);
 
-      return page.id;
+      return toDailyPage(page);
     },
 
     async renamePage(pageId, title) {
@@ -86,6 +118,53 @@ export function createNotionDiaryRepository(
     async lockPage(pageId) {
       await client.pages.update({ page_id: pageId, is_locked: true });
       await sleep(WRITE_INTERVAL_MS);
+    },
+
+    async getDigestSectionTitles(pageId, label) {
+      return extractDigestSectionTitles(await retrieveMarkdown(pageId), label);
+    },
+
+    async getPageMarkdown(pageId) {
+      const markdown = await retrieveMarkdown(pageId);
+      const blockUrls = await mapSequentially(
+        extractBlockLinkIds(markdown),
+        async function (blockId): Promise<readonly [string, string | null]> {
+          const url = await getBlockUrl(blockId);
+          await sleep(READ_INTERVAL_MS);
+          return [blockId, url];
+        },
+      );
+
+      return normalizeMarkdown(
+        markdown,
+        pageId,
+        new Map(
+          blockUrls.flatMap(function ([blockId, url]) {
+            return url === null ? [] : [[blockId, url] as const];
+          }),
+        ),
+      );
+    },
+
+    mentionOf: createPageMention,
+
+    async appendMarkdown(pageId, content) {
+      try {
+        await client.pages.updateMarkdown({
+          page_id: pageId,
+          type: "insert_content",
+          insert_content: { content, position: { type: "end" } },
+        });
+      } catch (error: unknown) {
+        // 本文を理由にした拒否だけをポートの契約へ変換する。認証・レート制限・通信障害はそのまま上げる。
+        if (isNotionContentRejection(error)) {
+          throw new ContentRejectedError(pageId, error);
+        }
+
+        throw error;
+      } finally {
+        await sleep(WRITE_INTERVAL_MS);
+      }
     },
   };
 }

@@ -9,7 +9,7 @@ on:
 
   workflow_dispatch:
 
-# 同時に走ると同じ日の Daily・習慣ページを二重作成し得るため、実行を直列化する。
+# 同時に走ると同じ日の Daily・習慣ページを二重作成し、同じまとめを二重に書き得るため、実行を直列化する。
 concurrency:
   group: maintain
   cancel-in-progress: false

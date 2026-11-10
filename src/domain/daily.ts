@@ -99,15 +99,31 @@ export class DailyPage {
   }
 
   // 今日の分はタイトルを整え、終了した日は閉じる。操作は順に適用する。
-  decideActions(today: Temporal.PlainDate): readonly PageAction[] {
+  // まとめの置き場になる締めの日の Daily（awaitsDigest）は、まとめを書き終えた段階が閉じるので、ここでは閉じない。
+  decideActions(today: Temporal.PlainDate, awaitsDigest = false): readonly PageAction[] {
     if (this.isOn(today)) {
       return this.title === this.expectedTitle
         ? []
         : [{ type: PAGE_ACTION_TYPE.rename, title: this.expectedTitle }];
     }
 
-    return this.isEnded(today) && !this.isLocked ? [{ type: PAGE_ACTION_TYPE.lock }] : [];
+    return this.isEnded(today) && !this.isLocked && !awaitsDigest
+      ? [{ type: PAGE_ACTION_TYPE.lock }]
+      : [];
   }
+}
+
+// 日付順に並べ、同じ日付の Daily は created_time 順にする。
+export function compareDailies(left: DailyPage, right: DailyPage): number {
+  const dateComparison = Temporal.PlainDate.compare(left.date, right.date);
+
+  if (dateComparison !== 0) {
+    return dateComparison;
+  }
+
+  const timeComparison = Temporal.Instant.compare(left.createdAt, right.createdAt);
+
+  return timeComparison !== 0 ? timeComparison : left.id.localeCompare(right.id);
 }
 
 export function shouldCreateTodayPage(
