@@ -2,6 +2,8 @@
 // ドメインが知るのは「セクション = divider + 見出し 2」「参照は [text](url) のリンク」「コピーできない箇所は元ページ参照」まで。
 // <unknown/>・<embed>・<mention-page>・署名付き URL はこの層で吸収する。
 
+import { UNCOPIED_BLOCK_NOTICE } from "../../domain/transfer-markdown";
+
 const NOTION_PAGE_URL_BASE = "https://app.notion.com/p/";
 // プレビュー展開済みの bookmark / link_preview は外部 URL ではなく自ブロックへのリンクで出力される。
 const NOTION_BLOCK_LINK_PATTERN =
@@ -56,7 +58,7 @@ export function normalizeMarkdown(
       const url = URL_ATTRIBUTE_PATTERN.exec(attributes)?.[1] ?? "";
 
       return url === ""
-        ? `${indent}（コピー非対応ブロック。元ページを参照） ${mention}`
+        ? `${indent}${UNCOPIED_BLOCK_NOTICE} ${mention}`
         : `${indent}[${url}](${url})`;
     })
     .replace(EMBED_PATTERN, "[$1]($1)");

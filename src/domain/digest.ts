@@ -7,9 +7,10 @@ import { Temporal } from "temporal-polyfill";
 import type { DigestParts } from "./markdown-section";
 
 import { compareDailies, formatDailyTitle, parseDailyTitle } from "./daily";
-import { isBlankBody, removeDigest } from "./markdown-section";
+import { isBlankBody, removeDigest, stripFencedCode } from "./markdown-section";
 import { PAGE_ACTION_TYPE } from "./page";
 import { REFS_HEADING_TITLE } from "./refs";
+import { UNTRANSFERRED_NOTICES } from "./transfer-markdown";
 
 // まとめの種類。週は転記だけ、月は転記と Refs を書く。
 export const DIGEST_KIND = {
@@ -198,6 +199,56 @@ export function decideWeeklyCleanup(parts: DigestParts | null): WeeklyCleanup {
     : { type: WEEKLY_CLEANUP.removeDigest, digest: parts.digest };
 }
 
+// まとめを、日付の見出しごとの本文に分けたもの。Refs の見出しより後ろは date が null。
+interface DateSection {
+  readonly date: Temporal.PlainDate | null;
+  readonly lines: readonly string[];
+}
+
+// 本文に見出し 2 を書いた日もあるので、日付の見出しと Refs の見出しだけで区切る。
+function splitByDateHeadings(digest: string): readonly DateSection[] {
+  return stripFencedCode(digest)
+    .split("\n")
+    .reduce<readonly DateSection[]>(function (sections, line) {
+      const heading = /^## (.+)$/.exec(line)?.[1]?.trim();
+
+      if (heading !== undefined && (parseDailyTitle(heading) !== null || heading === REFS_HEADING_TITLE)) {
+        return [...sections, { date: parseDailyTitle(heading), lines: [] }];
+      }
+
+      const last = sections.at(-1);
+      return last === undefined ? sections : sections.with(-1, { ...last, lines: [...last.lines, line] });
+    }, []);
+}
+
+// まとめのうち、本文を写せなかった日（コピーできないブロックの案内か、転記を省いた注記がある日）。
+// 画像・ファイルの案内だけの日は含めない。
+export function listUntransferredDates(digest: string): readonly Temporal.PlainDate[] {
+  return splitByDateHeadings(digest).flatMap(function ({ date, lines }) {
+    const body = lines.join("\n");
+    const untransferred = UNTRANSFERRED_NOTICES.some(function (notice) {
+      return body.includes(notice);
+    });
+
+    return date !== null && untransferred ? [date] : [];
+  });
+}
+
+// 月のまとめに置き換わった普通の日の Daily のうち、ゴミ箱へ移すもの。
+// 本文を写せなかった日は、元の Daily にしか本文が無いので残す。digest は月のまとめ（見出しから末尾まで）。
+export function selectRetiredDailies(
+  candidates: readonly DailyPage[],
+  digest: string | null,
+): readonly DailyPage[] {
+  const untransferred = digest === null ? [] : listUntransferredDates(digest);
+
+  return candidates.filter(function (daily) {
+    return !untransferred.some(function (date) {
+      return daily.isOn(date);
+    });
+  });
+}
+
 // 月のまとめに置き換わる週のまとめの置き場。
 export interface ReplacedWeeklyDigest {
   readonly dailyId: string;
@@ -297,6 +348,18 @@ export class DigestTarget {
   isComplete(dailies: readonly DailyPage[]): boolean {
     return this.sourcesIn(dailies).every((daily) => {
       return this.isTransferred(daily.date);
+    });
+  }
+
+  // 月のまとめを写し終えたら、その月の普通の日（日曜でも月末でもない日）の Daily はゴミ箱へ移す候補になる。
+  // 日曜と月末の Daily は残す。写し終えるまでは候補にしない。
+  listOrdinaryDailies(dailies: readonly DailyPage[]): readonly DailyPage[] {
+    if (this.period.kind !== DIGEST_KIND.monthly || !this.isComplete(dailies)) {
+      return [];
+    }
+
+    return this.sourcesIn(dailies).filter(function (daily) {
+      return DigestPeriod.closingOn(daily.date) === null;
     });
   }
 

@@ -13,7 +13,9 @@ import {
   findClosingDaily,
   listAwaitingClosingDailies,
   listDueDigestPeriods,
+  listUntransferredDates,
   planMissingClosingDailies,
+  selectRetiredDailies,
 } from "./digest";
 import { dailyOn } from "./testing";
 
@@ -186,6 +188,40 @@ describe("decideWeeklyCleanup", () => {
   });
 });
 
+describe("listUntransferredDates", () => {
+  it("コピーできないブロックの案内か、転記を省いた注記がある日だけを返す", () => {
+    // 元の Daily にしか本文が無い日を見分け、画像・ファイルの案内だけの日や Refs の中の文字列を数えないことを保証する。
+    const digest = [
+      "# 26.M11",
+      "## 26.11.02（月）",
+      "---",
+      "## メモ",
+      "\t（コピー非対応ブロック。元ページを参照） @mon",
+      "## 26.11.03（火）",
+      "---",
+      "（この日の転記はブロック互換性の問題で省略。元ページを参照） @tue",
+      "## 26.11.04（水）",
+      "---",
+      "（画像/ファイルは元ページを参照） @wed",
+      "## Refs",
+      "- [（コピー非対応ブロック。元ページを参照）](https://example.com/)",
+    ].join("\n");
+
+    expect(listUntransferredDates(digest)).toEqual([date("2026-11-02"), date("2026-11-03")]);
+  });
+});
+
+describe("selectRetiredDailies", () => {
+  it("本文を写せなかった日の Daily を除いて返す", () => {
+    // 写せなかった日は同じ日付の Daily をすべて残し、まとめが無ければ候補をそのまま移すことを保証する。
+    const candidates = [dailyOn("2026-11-02", { id: "mon" }), dailyOn("2026-11-04", { id: "wed" })];
+    const digest = "# 26.M11\n## 26.11.02（月）\n（この日の転記はブロック互換性の問題で省略。元ページを参照） @mon\n";
+
+    expect(selectRetiredDailies(candidates, digest).map((daily) => daily.id)).toEqual(["wed"]);
+    expect(selectRetiredDailies(candidates, null).map((daily) => daily.id)).toEqual(["mon", "wed"]);
+  });
+});
+
 describe("deriveDigestState", () => {
   it("まとめの見出しが無ければ、何も書いていない状態にする", () => {
     // 最初に書くときにまとめの見出しを置くことを保証する。
@@ -265,6 +301,24 @@ describe("DigestTarget", () => {
       { dailyId: "sun-2", label: "26.W19" },
     ]);
     expect(new DigestTarget(week, sunday, empty).listReplacedWeeklyDigests([sunday])).toEqual([]);
+  });
+
+  it("月のまとめを写し終えたら、日曜でも月末でもない Daily をゴミ箱へ移す候補にする", () => {
+    // 写し終える前に普通の日を移さず、日曜・月末（同じ日付の 2 件目を含む）と週のまとめの Daily は残すことを保証する。
+    const month = DigestPeriod.monthOf(date("2026-05-31"));
+    const monthEnd = dailyOn("2026-05-31", { id: "month-end", createdTime: "2026-05-31T00:00:00.000Z" });
+    const dailies = [
+      monthEnd,
+      dailyOn("2026-05-31", { id: "month-end-2", createdTime: "2026-05-31T05:00:00.000Z" }),
+      dailyOn("2026-05-01", { id: "fri" }),
+      dailyOn("2026-05-03", { id: "sun" }),
+    ];
+    const partial = new DigestTarget(month, monthEnd, empty).withTransferred(date("2026-05-01"));
+    const complete = partial.withTransferred(date("2026-05-03")).withTransferred(date("2026-05-31"));
+
+    expect(partial.listOrdinaryDailies(dailies)).toEqual([]);
+    expect(complete.listOrdinaryDailies(dailies).map((daily) => daily.id)).toEqual(["fri"]);
+    expect(new DigestTarget(week, sunday, empty).listOrdinaryDailies([sunday, dailyOn("2026-11-10")])).toEqual([]);
   });
 
   it("期間外の日を転記済みにしようとしたら失敗する", () => {

@@ -1,6 +1,7 @@
 import { Temporal } from "temporal-polyfill";
 import { describe, expect, it } from "vitest";
 
+import { ContentRejectedError } from "../domain/diary-repository";
 import { dailyOn, habitOn } from "../domain/testing";
 import { runMaintenance } from "./run-maintenance";
 import { createFakeDiary, createFakeHabits, noPageTitles } from "./testing";
@@ -10,6 +11,7 @@ const date = Temporal.PlainDate.from;
 describe("runMaintenance: Daily", () => {
   it("今日の Daily を作り、終わった日をロックし、月末の Daily にはまとめを書いてからロックする", async () => {
     // 1 回の実行で今日のページの作成と過去日のロックまで進み、締めの日だけはまとめが揃ってから閉じることを保証する。
+    // 月のまとめに写した 07-30 は、月末をロックする前にゴミ箱へ移す。
     // 2026-08-01（土）: 07-31 は 26.M07 の締めの日。
     const diary = createFakeDiary({
       dailies: [dailyOn("2026-07-30", { id: "d-0730" }), dailyOn("2026-07-31", { id: "d-0731" })],
@@ -26,6 +28,7 @@ describe("runMaintenance: Daily", () => {
       { method: "lockPage", pageId: "d-0730" },
       { method: "appendMarkdown", pageId: "d-0731", content: "# 26.M07\n" },
       { method: "appendMarkdown", pageId: "d-0731", content: "## 26.07.30（木）\n---\n木曜\n<empty-block/>\n" },
+      { method: "trashPage", pageId: "d-0730" },
       { method: "lockPage", pageId: "d-0731" },
     ]);
     expect(summary.daily).toEqual({ created: 1, renames: 0, locks: 1 });
@@ -35,7 +38,8 @@ describe("runMaintenance: Daily", () => {
       fallbackDates: [],
       refs: 0,
       weeklyDigestsRemoved: 0,
-      pagesTrashed: 0,
+      sundaysTrashed: 0,
+      dailiesTrashed: 1,
       locks: 1,
     });
   });
@@ -171,8 +175,8 @@ describe("runMaintenance: 月のまとめと Refs", () => {
     },
   };
 
-  it("月が変わった最初の実行で、転記 → Refs → 週のまとめの消去 → ロックの順に 1 回で進める", async () => {
-    // Refs は月末の Daily 自身の本文も含めて初出順にまとめ、週のまとめは月のまとめを書き終えてから消し、最後に閉じることを保証する。
+  it("月が変わった最初の実行で、転記 → Refs → 週のまとめの消去 → 普通の日の移動 → ロックの順に 1 回で進める", async () => {
+    // Refs は月末の Daily 自身の本文も含めて初出順にまとめ、週のまとめと普通の日は月のまとめを書き終えてから片付け、最後に閉じることを保証する。
     const diary = createFakeDiary(novemberEnd);
 
     const summary = await runMaintenance(
@@ -186,6 +190,7 @@ describe("runMaintenance: 月のまとめと Refs", () => {
       "appendMarkdown", // 11-29（週のまとめは写さない）
       "appendMarkdown", // Refs
       "deleteMarkdown", // d-1129 の 26.W48
+      "trashPage", // d-1128（土曜）
       "lockPage", // d-1130
     ]);
     expect(diary.markdownOf("d-1130")).toContain(
@@ -197,7 +202,8 @@ describe("runMaintenance: 月のまとめと Refs", () => {
       daysTransferred: 2,
       refs: 1,
       weeklyDigestsRemoved: 1,
-      pagesTrashed: 0,
+      sundaysTrashed: 0,
+      dailiesTrashed: 1,
       locks: 1,
     });
   });
@@ -219,8 +225,44 @@ describe("runMaintenance: 月のまとめと Refs", () => {
 
     expect(diary.calls.filter((call) => call.method === "trashPage" || call.method === "deleteMarkdown")).toEqual([
       { method: "trashPage", pageId: "d-1129" },
+      { method: "trashPage", pageId: "d-1128" },
     ]);
-    expect(summary.digest).toMatchObject({ weeklyDigestsRemoved: 0, pagesTrashed: 1, locks: 1 });
+    expect(summary.digest).toMatchObject({ weeklyDigestsRemoved: 0, sundaysTrashed: 1, dailiesTrashed: 1, locks: 1 });
+  });
+
+  it("本文を写せなかった日の Daily は残し、画像・ファイルの案内だけの日は移す", async () => {
+    // 元の Daily にしか本文が無い日を消さず、本文が月のまとめにある日だけを片付けることを保証する。
+    // 11-24 はコピーできないブロックを含み、11-25 は本文を受け付けられず注記になり、11-26 は画像だけを元ページに残す。
+    const diary = createFakeDiary({
+      dailies: [
+        dailyOn("2026-11-24", { id: "d-1124", isLocked: true }),
+        dailyOn("2026-11-25", { id: "d-1125", isLocked: true }),
+        dailyOn("2026-11-26", { id: "d-1126", isLocked: true }),
+        dailyOn("2026-11-27", { id: "d-1127", isLocked: true }),
+        dailyOn("2026-11-30", { id: "d-1130" }),
+      ],
+      markdown: {
+        "d-1124": "本文\n（コピー非対応ブロック。元ページを参照） @d-1124\n",
+        "d-1125": "受け付けられない本文\n",
+        "d-1126": "本文\n（画像/ファイルは元ページを参照） @d-1126\n",
+        "d-1127": "本文\n",
+        "d-1130": "月末\n",
+      },
+      rejectAppend(_pageId, content) {
+        return content.includes("受け付けられない本文") ? new ContentRejectedError("d-1130", null) : null;
+      },
+    });
+
+    const summary = await runMaintenance(
+      { diary, habits: createFakeHabits(), pageTitles: noPageTitles },
+      date("2026-12-01"),
+    );
+
+    expect(diary.calls.filter((call) => call.method === "trashPage")).toEqual([
+      { method: "trashPage", pageId: "d-1126" },
+      { method: "trashPage", pageId: "d-1127" },
+    ]);
+    expect(summary.digest).toMatchObject({ fallbackDates: [date("2026-11-25")], dailiesTrashed: 2, locks: 1 });
   });
 
   it("週のまとめの消去が失敗したら、月末の Daily をロックせずに実行を止める", async () => {
@@ -253,10 +295,12 @@ describe("runMaintenance: 月のまとめと Refs", () => {
     expect(diary.calls.filter((call) => call.method === "lockPage")).toEqual([]);
   });
 
-  it("転記と Refs と週のまとめの消去を終えた月末の Daily には、再実行で何もせずにロックだけする", async () => {
+  it("転記・Refs・週のまとめの消去・普通の日の移動を終えた月末の Daily には、再実行で何もせずにロックだけする", async () => {
     // まとめの見出しより後ろの日付見出しと Refs 見出し、日曜の週のまとめの見出しを冪等キーにして、二重に書かず消さないことを保証する。
+    // 移した普通の日（11-28）は一覧に出ない。
     const diary = createFakeDiary({
       ...novemberEnd,
+      dailies: novemberEnd.dailies.filter((daily) => daily.id !== "d-1128"),
       markdown: {
         ...novemberEnd.markdown,
         "d-1129": "本文 [記事B](https://example.com/b)\n",

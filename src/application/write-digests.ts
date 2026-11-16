@@ -15,6 +15,7 @@ import {
   extractOwnBody,
   findClosingDaily,
   listDueDigestPeriods,
+  selectRetiredDailies,
 } from "../domain/digest";
 import { createDigestHeader } from "../domain/markdown-section";
 import { buildRefsSection, collectRefs, selectRefTitle } from "../domain/refs";
@@ -32,7 +33,9 @@ export interface DigestResult {
   // 月のまとめに置き換わり、週のまとめを消した日曜の Daily の数（ゴミ箱へ移したものは含めない）
   readonly weeklyDigestsRemoved: number;
   // 週のまとめを除くと本文が空なので、ゴミ箱へ移した日曜の Daily の数
-  readonly pagesTrashed: number;
+  readonly sundaysTrashed: number;
+  // 月のまとめに置き換わり、ゴミ箱へ移した普通の日の Daily の数
+  readonly dailiesTrashed: number;
   readonly locks: number;
 }
 
@@ -44,6 +47,7 @@ interface DigestOutcome {
   readonly fallbackDates: readonly Temporal.PlainDate[];
   readonly refsWritten: boolean;
   readonly cleanups: readonly WeeklyCleanupType[];
+  readonly dailiesTrashed: number;
 }
 
 // 書く時期が来た期間のうち、締めの日の Daily がまだロックされていないものを読む。
@@ -155,6 +159,28 @@ function removeReplacedWeeklyDigests(
   });
 }
 
+// 月のまとめに置き換わった普通の日の Daily をゴミ箱へ移す。本文を写せなかった日は残す。
+// 移した Daily は一覧に出なくなるので、再実行では残りだけを移す。
+async function retireOrdinaryDailies(
+  diary: DiaryRepository,
+  target: DigestTarget,
+  dailies: readonly DailyPage[],
+): Promise<number> {
+  const candidates = target.listOrdinaryDailies(dailies);
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  const parts = await diary.getDigestParts(target.id, target.label);
+  const retired = selectRetiredDailies(candidates, parts?.digest ?? null);
+  await mapSequentially(retired, function (daily) {
+    return diary.trashPage(daily.id);
+  });
+
+  return retired.length;
+}
+
 async function writeDigest(
   diary: DiaryRepository,
   titles: WebPageTitleLookup,
@@ -172,8 +198,9 @@ async function writeDigest(
   }, withHeader);
   const withRefs = transferred.needsRefs ? await writeRefs(diary, titles, transferred) : null;
   const written = withRefs ?? transferred;
-  // 月末の Daily のロックは、週のまとめを消し終えた印も兼ねる。消すのはロックより前に済ませる。
+  // 月末の Daily のロックは、週のまとめの消去と普通の日の移動を終えた印も兼ねる。どちらもロックより前に済ませる。
   const cleanups = await removeReplacedWeeklyDigests(diary, written, dailies);
+  const dailiesTrashed = await retireOrdinaryDailies(diary, written, dailies);
 
   return {
     target: written,
@@ -183,10 +210,12 @@ async function writeDigest(
     }),
     refsWritten: withRefs !== null,
     cleanups,
+    dailiesTrashed,
   };
 }
 
-// 今月の終わった週と、終わった月のまとめを締めの日の Daily の末尾に書く。月のまとめを写し終えたら、その月の週のまとめを消す。
+// 今月の終わった週と、終わった月のまとめを締めの日の Daily の末尾に書く。
+// 月のまとめを写し終えたら、その月の週のまとめを消し、普通の日の Daily をゴミ箱へ移す。
 // 期間の全日が揃ったら締めの日の Daily をロックする。
 // 途中で失敗したら、その実行ではロックせずに止まり、次の実行が見出しを手がかりに続きから書く。
 export async function writeDigests(
@@ -228,7 +257,10 @@ export async function writeDigests(
       return refsWritten;
     }).length,
     weeklyDigestsRemoved: cleanupCounts[WEEKLY_CLEANUP.removeDigest],
-    pagesTrashed: cleanupCounts[WEEKLY_CLEANUP.trashPage],
+    sundaysTrashed: cleanupCounts[WEEKLY_CLEANUP.trashPage],
+    dailiesTrashed: outcomes.reduce(function (total, { dailiesTrashed }) {
+      return total + dailiesTrashed;
+    }, 0),
     locks: counts.locks,
   };
 }
