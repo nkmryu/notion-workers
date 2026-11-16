@@ -6,7 +6,7 @@ import type { DiaryRepository } from "../../domain/diary-repository";
 import { collectAllDataSourceRows, isFullBlock, isFullDataSource } from "@notionhq/client";
 
 import { JST_TIME_ZONE } from "../../domain/jst";
-import { extractDigestSectionTitles } from "../../domain/markdown-section";
+import { extractDigestSectionTitles, splitAtDigest } from "../../domain/markdown-section";
 import { lazy } from "../../shared/lazy";
 import { mapSequentially } from "../../shared/sequence";
 import { isNotionContentRejection } from "./error";
@@ -47,6 +47,18 @@ export function createNotionDiaryRepository(
   async function retrieveMarkdown(pageId: string): Promise<string> {
     const response = await client.pages.retrieveMarkdown({ page_id: pageId });
     await sleep(READ_INTERVAL_MS);
+
+    return response.markdown;
+  }
+
+  // 消す範囲を決めるための読み取り。途中までしか返らない本文で範囲を決めると、末尾の消し残しに気づけないので止める。
+  async function retrieveCompleteMarkdown(pageId: string): Promise<string> {
+    const response = await client.pages.retrieveMarkdown({ page_id: pageId });
+    await sleep(READ_INTERVAL_MS);
+
+    if (response.truncated) {
+      throw new Error(`ページ ${pageId} の本文が途中までしか返りませんでした`);
+    }
 
     return response.markdown;
   }
@@ -165,6 +177,26 @@ export function createNotionDiaryRepository(
       } finally {
         await sleep(WRITE_INTERVAL_MS);
       }
+    },
+
+    async getDigestParts(pageId, label) {
+      return splitAtDigest(await retrieveCompleteMarkdown(pageId), label);
+    },
+
+    // ロック済みのページも API からは書き換えられる（is_locked は Notion の画面での編集だけを止める）。
+    // allow_deleting_content は付けない。子ページやデータベースを含む範囲は、Notion が validation_error で拒む。
+    async deleteMarkdown(pageId, content) {
+      await client.pages.updateMarkdown({
+        page_id: pageId,
+        type: "update_content",
+        update_content: { content_updates: [{ old_str: content, new_str: "" }] },
+      });
+      await sleep(WRITE_INTERVAL_MS);
+    },
+
+    async trashPage(pageId) {
+      await client.pages.update({ page_id: pageId, in_trash: true });
+      await sleep(WRITE_INTERVAL_MS);
     },
   };
 }

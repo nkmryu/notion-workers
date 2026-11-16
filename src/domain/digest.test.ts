@@ -6,11 +6,13 @@ import {
   DIGEST_KIND,
   DigestPeriod,
   DigestTarget,
+  WEEKLY_CLEANUP,
+  decideWeeklyCleanup,
   deriveDigestState,
   extractOwnBody,
   findClosingDaily,
   listAwaitingClosingDailies,
-  listEndedDigestPeriods,
+  listDueDigestPeriods,
   planMissingClosingDailies,
 } from "./digest";
 import { dailyOn } from "./testing";
@@ -50,15 +52,48 @@ describe("DigestPeriod", () => {
     expect(week.isEnded(date("2026-11-15"))).toBe(false);
     expect(week.isEnded(date("2026-11-16"))).toBe(true);
   });
+
+  it("月をまたぐ週は、日曜と同じ月の日だけを含む", () => {
+    // 前の月の日を週のまとめへ写さず、その月のまとめだけに入れることを保証する。
+    // 26.W44 は 2026-10-26〜11-01、26.W49 は 2026-11-30〜12-06。
+    const w44 = DigestPeriod.weekOf(date("2026-11-01"));
+    const w49 = DigestPeriod.weekOf(date("2026-12-06"));
+
+    expect(w44.contains(date("2026-10-31"))).toBe(false);
+    expect(w44.contains(date("2026-11-01"))).toBe(true);
+    expect(w49.contains(date("2026-11-30"))).toBe(false);
+    expect(w49.contains(date("2026-12-01"))).toBe(true);
+  });
+
+  it("週のまとめは今月の週だけ、月のまとめは終わった月すべてで書く", () => {
+    // 月が変わってから、前の月の週のまとめを書き足さないことを保証する。
+    const w48 = DigestPeriod.weekOf(date("2026-11-29"));
+    const m11 = DigestPeriod.monthOf(date("2026-11-30"));
+
+    expect(w48.isDue(date("2026-11-30"))).toBe(true);
+    expect(w48.isDue(date("2026-12-01"))).toBe(false);
+    expect(m11.isDue(date("2026-12-01"))).toBe(true);
+    expect(m11.isDue(date("2027-03-01"))).toBe(true);
+  });
 });
 
-describe("listEndedDigestPeriods", () => {
-  it("Daily のある期間のうち、締めの日が終わったものを日付順に 1 つずつ返す", () => {
+describe("listDueDigestPeriods", () => {
+  it("Daily のある期間のうち、書く時期が来たものを日付順に 1 つずつ返す", () => {
     // 同じ期間を二重に扱わず、進行中の週・月のまとめを書かないことを保証する。
     const dailies = [dailyOn("2026-11-09"), dailyOn("2026-11-10"), dailyOn("2026-11-16")];
 
-    expect(describePeriods(listEndedDigestPeriods(dailies, date("2026-11-17")))).toEqual([
+    expect(describePeriods(listDueDigestPeriods(dailies, date("2026-11-17")))).toEqual([
       "26.W46@2026-11-15",
+    ]);
+  });
+
+  it("前の月の日は、週ではなく月の期間に入れる", () => {
+    // 前の月の週のまとめを書かず、月のまとめだけを書くことを保証する。
+    const dailies = [dailyOn("2026-10-20"), dailyOn("2026-10-27"), dailyOn("2026-11-03")];
+
+    expect(describePeriods(listDueDigestPeriods(dailies, date("2026-11-09")))).toEqual([
+      "26.M10@2026-10-31",
+      "26.W45@2026-11-08",
     ]);
   });
 
@@ -66,7 +101,7 @@ describe("listEndedDigestPeriods", () => {
     // 同じ本文を 1 ページに 2 回並べないことを保証する。2026-05-31 は日曜で月末。
     const dailies = [dailyOn("2026-05-25"), dailyOn("2026-05-31")];
 
-    expect(describePeriods(listEndedDigestPeriods(dailies, date("2026-06-01")))).toEqual([
+    expect(describePeriods(listDueDigestPeriods(dailies, date("2026-06-01")))).toEqual([
       "26.M05@2026-05-31",
     ]);
   });
@@ -93,8 +128,15 @@ describe("締めの日の Daily", () => {
   it("締めの日の Daily だけの期間には、別の種類の締めの日を作らない", () => {
     // 作った月末の Daily が週を、作った日曜の Daily が月を生み、締めの日を作り続ける連鎖を起こさないことを保証する。
     // 2025-06-30 は月曜の月末、2025-07-06 は日曜。
-    expect(planMissingClosingDailies([dailyOn("2025-06-30")], date("2025-11-10"))).toEqual([]);
-    expect(planMissingClosingDailies([dailyOn("2025-07-06")], date("2025-11-10"))).toEqual([]);
+    expect(planMissingClosingDailies([dailyOn("2025-06-30")], date("2025-07-07"))).toEqual([]);
+    expect(planMissingClosingDailies([dailyOn("2025-07-06")], date("2025-08-01"))).toEqual([]);
+  });
+
+  it("前の月の日だけの週には、日曜の Daily を作らない", () => {
+    // 月をまたぐ週で、写す日の無い週のまとめの置き場を作らないことを保証する。2026-11-01 は 26.W44 の日曜。
+    expect(planMissingClosingDailies([dailyOn("2026-10-27")], date("2026-11-02"))).toEqual([
+      { title: "26.10.31（土）", date: date("2026-10-31") },
+    ]);
   });
 
   it("まとめを書き終えていない締めの日の Daily だけを、ロックを待つ Daily として返す", () => {
@@ -127,6 +169,20 @@ describe("extractOwnBody", () => {
   it("締めの日でない日は、本文をそのまま返す", () => {
     // 本文に見出し 1 があっても、ふつうの日の本文を削らないことを保証する。
     expect(extractOwnBody("火曜\n# 26.W45\n", date("2026-11-03"))).toBe("火曜\n# 26.W45\n");
+  });
+});
+
+describe("decideWeeklyCleanup", () => {
+  it("週のまとめが無ければ何もせず、本文があればまとめだけを消し、本文が空ならゴミ箱へ移す", () => {
+    // 消し終えた日曜を二度消さず、書いた本文を消さず、空の日曜だけを捨てることを保証する。
+    expect(decideWeeklyCleanup(null)).toEqual({ type: WEEKLY_CLEANUP.none });
+    expect(decideWeeklyCleanup({ ownBody: "日曜の本文", digest: "# 26.W46\n" })).toEqual({
+      type: WEEKLY_CLEANUP.removeDigest,
+      digest: "# 26.W46\n",
+    });
+    expect(decideWeeklyCleanup({ ownBody: "<empty-block/>\n---", digest: "# 26.W46\n" })).toEqual({
+      type: WEEKLY_CLEANUP.trashPage,
+    });
   });
 });
 
@@ -187,6 +243,28 @@ describe("DigestTarget", () => {
     expect(new DigestTarget(week, sunday, empty).needsRefs).toBe(false);
     expect(new DigestTarget(month, monthEnd, empty).needsRefs).toBe(true);
     expect(new DigestTarget(month, monthEnd, empty).withRefs().needsRefs).toBe(false);
+  });
+
+  it("月のまとめを写し終えたら、その月の日曜にある週のまとめを置き換える対象にする", () => {
+    // 写し終える前に週のまとめを消さず、月末の日曜（月のまとめの置き場）は対象にしないことを保証する。
+    // 2026-05: 05-03・05-10 は日曜、05-31 は日曜で月末。
+    const month = DigestPeriod.monthOf(date("2026-05-31"));
+    const monthEnd = dailyOn("2026-05-31", { id: "month-end" });
+    const dailies = [
+      monthEnd,
+      dailyOn("2026-05-01", { id: "fri" }),
+      dailyOn("2026-05-03", { id: "sun-1" }),
+      dailyOn("2026-05-10", { id: "sun-2" }),
+    ];
+    const partial = new DigestTarget(month, monthEnd, empty).withTransferred(date("2026-05-01"));
+    const complete = partial.withTransferred(date("2026-05-03")).withTransferred(date("2026-05-10"));
+
+    expect(partial.listReplacedWeeklyDigests(dailies)).toEqual([]);
+    expect(complete.listReplacedWeeklyDigests(dailies)).toEqual([
+      { dailyId: "sun-1", label: "26.W18" },
+      { dailyId: "sun-2", label: "26.W19" },
+    ]);
+    expect(new DigestTarget(week, sunday, empty).listReplacedWeeklyDigests([sunday])).toEqual([]);
   });
 
   it("期間外の日を転記済みにしようとしたら失敗する", () => {

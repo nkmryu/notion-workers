@@ -6,20 +6,24 @@ import type { HabitRepository } from "../domain/habit-repository";
 import type { WebPageTitleLookup } from "./web-page-title-lookup";
 
 import { DailyPage } from "../domain/daily";
-import { extractDigestSectionTitles } from "../domain/markdown-section";
+import { extractDigestSectionTitles, splitAtDigest } from "../domain/markdown-section";
 
 // ユースケースのテスト用。呼び出しを順に記録し、追記した本文を次の読み取りへ反映するインメモリのリポジトリ。
 export type RecordedCall =
   | { readonly method: "createDaily"; readonly title: string; readonly date: Temporal.PlainDate }
   | { readonly method: "renamePage"; readonly pageId: string; readonly title: string }
   | { readonly method: "lockPage"; readonly pageId: string }
-  | { readonly method: "appendMarkdown"; readonly pageId: string; readonly content: string };
+  | { readonly method: "appendMarkdown"; readonly pageId: string; readonly content: string }
+  | { readonly method: "deleteMarkdown"; readonly pageId: string; readonly content: string }
+  | { readonly method: "trashPage"; readonly pageId: string };
 
 export interface FakeDiaryOptions {
   readonly dailies?: readonly DailyPage[];
   readonly markdown?: Readonly<Record<string, string>>;
   // appendMarkdown を失敗させたい内容を判定する
   readonly rejectAppend?: (pageId: string, content: string) => Error | null;
+  // deleteMarkdown を失敗させたいページを判定する
+  readonly rejectDelete?: (pageId: string) => Error | null;
 }
 
 export interface FakeDiary extends DiaryRepository {
@@ -69,6 +73,28 @@ export function createFakeDiary(options: FakeDiaryOptions = {}): FakeDiary {
 
       calls.push({ method: "appendMarkdown", pageId, content });
       markdown.set(pageId, `${markdown.get(pageId) ?? ""}${content}`);
+    },
+    async getDigestParts(pageId, label) {
+      return splitAtDigest(markdown.get(pageId) ?? "", label);
+    },
+    // Notion と同じく、一致する部分が無ければ失敗させる。
+    async deleteMarkdown(pageId, content) {
+      const rejection = options.rejectDelete?.(pageId) ?? null;
+      const current = markdown.get(pageId) ?? "";
+
+      if (rejection !== null) {
+        throw rejection;
+      }
+      if (!current.includes(content)) {
+        throw new Error(`ページ ${pageId} に一致する本文がありません`);
+      }
+
+      calls.push({ method: "deleteMarkdown", pageId, content });
+      markdown.set(pageId, current.replace(content, ""));
+    },
+    async trashPage(pageId) {
+      calls.push({ method: "trashPage", pageId });
+      markdown.delete(pageId);
     },
     mentionOf(pageId) {
       return `@${pageId}`;

@@ -4,7 +4,9 @@ import {
   createDigestHeader,
   extractDigestSectionTitles,
   extractSectionTitles,
+  isBlankBody,
   removeDividers,
+  splitAtDigest,
 } from "./markdown-section";
 import {
   createTransferFallbackSection,
@@ -63,6 +65,43 @@ describe("extractDigestSectionTitles", () => {
   it("別の期間のまとめの見出しは手がかりにしない", () => {
     // 週と月の見出しを取り違えて、別の期間の転記を済んだものとみなさないことを保証する。
     expect(extractDigestSectionTitles("# 26.M11\n## 26.11.09（月）", "26.W46")).toBeNull();
+  });
+});
+
+describe("splitAtDigest", () => {
+  it("まとめの見出しから末尾までを digest にし、つなぐと元に戻る", () => {
+    // 週のまとめを消すとき、日曜自身の本文を残し、まとめだけを取り除けることを保証する。
+    const markdown = "日曜の本文\n<empty-block/>\n# 26.W46\n## 26.11.09（月）\n---\n月曜\n<empty-block/>\n";
+    const parts = splitAtDigest(markdown, "26.W46");
+
+    expect(parts).toEqual({
+      ownBody: "日曜の本文\n<empty-block/>",
+      digest: "# 26.W46\n## 26.11.09（月）\n---\n月曜\n<empty-block/>\n",
+    });
+    expect(`${parts?.ownBody}\n${parts?.digest}`).toBe(markdown);
+  });
+
+  it("旧形式の、まとめの見出しの直前の divider はまとめに含める", () => {
+    // 旧形式で書いたまとめを消しても、日曜の本文の末尾に divider を残さないことを保証する。
+    expect(splitAtDigest("日曜\n---\n# 26.W46\n---\n## 26.11.09（月）\n月曜\n", "26.W46")).toEqual({
+      ownBody: "日曜",
+      digest: "---\n# 26.W46\n---\n## 26.11.09（月）\n月曜\n",
+    });
+  });
+
+  it("まとめの見出しが無ければ null、ページの先頭にあれば本文は空", () => {
+    // 消し終えたページを二度消さず、まとめのためだけに作った日曜を本文の無いページと読めることを保証する。
+    expect(splitAtDigest("日曜\n# 26.M11\n", "26.W46")).toBeNull();
+    expect(splitAtDigest("# 26.W46\n## 26.11.09（月）\n", "26.W46")?.ownBody).toBe("");
+  });
+});
+
+describe("isBlankBody", () => {
+  it("空行と divider だけなら空、文字が 1 つでもあれば空でない", () => {
+    // 本文を書かなかった日曜だけをゴミ箱へ移す対象にすることを保証する。
+    expect(isBlankBody("")).toBe(true);
+    expect(isBlankBody("<empty-block/>\n---\n\t---\n")).toBe(true);
+    expect(isBlankBody("<empty-block/>\n- [ ] 洗濯\n")).toBe(false);
   });
 });
 

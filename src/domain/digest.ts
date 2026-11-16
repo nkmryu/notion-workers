@@ -4,8 +4,10 @@ import type { PageAction } from "./page";
 
 import { Temporal } from "temporal-polyfill";
 
+import type { DigestParts } from "./markdown-section";
+
 import { compareDailies, formatDailyTitle, parseDailyTitle } from "./daily";
-import { removeDigest } from "./markdown-section";
+import { isBlankBody, removeDigest } from "./markdown-section";
 import { PAGE_ACTION_TYPE } from "./page";
 import { REFS_HEADING_TITLE } from "./refs";
 
@@ -28,8 +30,14 @@ function isMonthEnd(date: Temporal.PlainDate): boolean {
   return date.day === date.daysInMonth;
 }
 
+function isSameMonth(left: Temporal.PlainDate, right: Temporal.PlainDate): boolean {
+  return left.year === right.year && left.month === right.month;
+}
+
 // まとめを作る期間。週は ISO 週（月〜日）、月は暦月で、どちらも最後の日（締めの日）で識別する。
 // まとめは締めの日の Daily の末尾に書く。
+// 今月の日は週のまとめだけに、前の月までの日は月のまとめだけに入れる。週は締めの日と同じ月の日だけを含み、
+// 月が終わると、その月の週のまとめは月のまとめに置き換わる。
 export class DigestPeriod {
   private constructor(
     readonly kind: DigestKind,
@@ -65,9 +73,13 @@ export class DigestPeriod {
       : `${formatShortYear(date.year)}.M${formatTwoDigits(date.month)}`;
   }
 
+  // 月をまたぐ週は、締めの日（日曜）と同じ月の日だけを含む。前の月の日は、その月のまとめに入る。
   contains(date: Temporal.PlainDate): boolean {
-    const own = this.kind === DIGEST_KIND.weekly ? DigestPeriod.weekOf(date) : DigestPeriod.monthOf(date);
-    return own.closingDate.equals(this.closingDate);
+    if (this.kind === DIGEST_KIND.monthly) {
+      return DigestPeriod.monthOf(date).closingDate.equals(this.closingDate);
+    }
+
+    return DigestPeriod.weekOf(date).closingDate.equals(this.closingDate) && isSameMonth(date, this.closingDate);
   }
 
   // 締めの日が終わった期間だけ、まとめを書く。締めの日の本文まで書き終わっている。
@@ -75,9 +87,10 @@ export class DigestPeriod {
     return Temporal.PlainDate.compare(this.closingDate, today) < 0;
   }
 
-  // 日曜が月末と重なる週。その週の月〜土は必ず同じ月に入るので、月のまとめに含まれる。
-  isCoveredByMonth(): boolean {
-    return this.kind === DIGEST_KIND.weekly && isMonthEnd(this.closingDate);
+  // まとめを書く時期か。月は終わった月すべて、週は終わった週のうち今月のものだけ。
+  // 日曜が月末と重なる週は、終わった時点で前の月になるので書かない（月のまとめに含まれる）。
+  isDue(today: Temporal.PlainDate): boolean {
+    return this.isEnded(today) && (this.kind === DIGEST_KIND.monthly || isSameMonth(this.closingDate, today));
   }
 
   equals(other: DigestPeriod): boolean {
@@ -90,18 +103,19 @@ function compareDigestPeriods(left: DigestPeriod, right: DigestPeriod): number {
   return dateComparison !== 0 ? dateComparison : left.kind.localeCompare(right.kind);
 }
 
-// まとめを書く期間: 締めの日が終わり、Daily が 1 件以上ある期間。日付順に返す。
-// 日曜が月末と重なる週は、月のまとめだけにする。
-export function listEndedDigestPeriods(
+// まとめを書く期間: 書く時期が来ていて（isDue）、Daily が 1 件以上ある期間。日付順に返す。
+export function listDueDigestPeriods(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): readonly DigestPeriod[] {
   return dailies
     .flatMap(function (daily) {
-      return [DigestPeriod.weekOf(daily.date), DigestPeriod.monthOf(daily.date)];
+      return [DigestPeriod.weekOf(daily.date), DigestPeriod.monthOf(daily.date)].filter(function (period) {
+        return period.contains(daily.date);
+      });
     })
     .filter(function (period) {
-      return period.isEnded(today) && !period.isCoveredByMonth();
+      return period.isDue(today);
     })
     .reduce<readonly DigestPeriod[]>(function (periods, period) {
       return periods.some(function (listed) {
@@ -134,7 +148,7 @@ export function planMissingClosingDailies(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): readonly NewDaily[] {
-  return listEndedDigestPeriods(dailies, today)
+  return listDueDigestPeriods(dailies, today)
     .filter(function (period) {
       const hasOrdinaryDay = dailies.some(function (daily) {
         return period.contains(daily.date) && DigestPeriod.closingOn(daily.date) === null;
@@ -152,10 +166,42 @@ export function listAwaitingClosingDailies(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): readonly DailyPage[] {
-  return listEndedDigestPeriods(dailies, today).flatMap(function (period) {
+  return listDueDigestPeriods(dailies, today).flatMap(function (period) {
     const closing = findClosingDaily(period, dailies);
     return closing === null || closing.isLocked ? [] : [closing];
   });
+}
+
+// 月が終わったときに、日曜の Daily の週のまとめをどうするか。
+export const WEEKLY_CLEANUP = {
+  // 週のまとめが無い（消し終えた、または書かなかった）
+  none: "none",
+  // 週のまとめだけを消し、日曜自身の本文を残す
+  removeDigest: "removeDigest",
+  // 週のまとめを除くと本文が空なので、Daily ごとゴミ箱へ移す
+  trashPage: "trashPage",
+} as const;
+export type WeeklyCleanup =
+  | { readonly type: typeof WEEKLY_CLEANUP.none }
+  | { readonly type: typeof WEEKLY_CLEANUP.removeDigest; readonly digest: string }
+  | { readonly type: typeof WEEKLY_CLEANUP.trashPage };
+
+// 本文が空の日曜は、週のまとめを消してから捨てるのではなく、まとめごとゴミ箱へ移す。
+// 消してから捨てる 2 段にすると、間で失敗したときに、まとめの見出しという手がかりの無い空の Daily が残る。
+export function decideWeeklyCleanup(parts: DigestParts | null): WeeklyCleanup {
+  if (parts === null) {
+    return { type: WEEKLY_CLEANUP.none };
+  }
+
+  return isBlankBody(parts.ownBody)
+    ? { type: WEEKLY_CLEANUP.trashPage }
+    : { type: WEEKLY_CLEANUP.removeDigest, digest: parts.digest };
+}
+
+// 月のまとめに置き換わる週のまとめの置き場。
+export interface ReplacedWeeklyDigest {
+  readonly dailyId: string;
+  readonly label: string;
 }
 
 // まとめの状態: まとめの見出しがあるか、どの日を転記済みか、Refs があるか。
@@ -251,6 +297,19 @@ export class DigestTarget {
   isComplete(dailies: readonly DailyPage[]): boolean {
     return this.sourcesIn(dailies).every((daily) => {
       return this.isTransferred(daily.date);
+    });
+  }
+
+  // 月のまとめを写し終えたら、その月の日曜の Daily にある週のまとめを消す。
+  // 写し終えるまでは消さない。消した日の本文が、どのまとめにも無い時間を作らないため。
+  listReplacedWeeklyDigests(dailies: readonly DailyPage[]): readonly ReplacedWeeklyDigest[] {
+    if (this.period.kind !== DIGEST_KIND.monthly || !this.isComplete(dailies)) {
+      return [];
+    }
+
+    return this.sourcesIn(dailies).flatMap(function (daily) {
+      const own = DigestPeriod.closingOn(daily.date);
+      return own?.kind === DIGEST_KIND.weekly ? [{ dailyId: daily.id, label: own.label }] : [];
     });
   }
 

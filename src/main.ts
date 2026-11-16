@@ -11,7 +11,7 @@ function formatSummary({ daily, habit, digest }: MaintenanceSummary): string {
   return [
     `Daily: 作成${daily.created} / リネーム${daily.renames} / ロック${daily.locks}`,
     `習慣: 作成${habit.created}`,
-    `まとめ: 締めの日${digest.targets} / 転記${digest.daysTransferred}日（省略${digest.fallbackDates.length}） / Refs${digest.refs} / ロック${digest.locks}`,
+    `まとめ: 締めの日${digest.targets} / 転記${digest.daysTransferred}日（省略${digest.fallbackDates.length}） / Refs${digest.refs} / 週のまとめの消去${digest.weeklyDigestsRemoved}（ゴミ箱${digest.pagesTrashed}） / ロック${digest.locks}`,
   ].join("\n");
 }
 

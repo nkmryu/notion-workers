@@ -1,6 +1,7 @@
 import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "./daily";
+import type { DigestParts } from "./markdown-section";
 
 // 新しく作る Daily。タイトルは日付から決まるが、その規則はドメインが持つので、決めた結果を両方渡す。
 export interface NewDaily {
@@ -14,6 +15,7 @@ export interface NewDaily {
 // （参照は [text](url)、コピーできない箇所は元ページへの言及に置換済み）。
 // getDigestSectionTitles は転記状態の確認用で、本文の正規化をせず、まとめの見出しより後ろの見出し 2 だけを返す。
 // まとめの見出しが無ければ null を返す。
+// getDigestParts も正規化をせず、deleteMarkdown へそのまま渡せる本文で返す。
 export interface DiaryRepository {
   readonly listDailies: () => Promise<readonly DailyPage[]>;
   // ページはテンプレートから作る。テンプレートの指定は Notion の事情なので実装側が持つ。
@@ -24,6 +26,12 @@ export interface DiaryRepository {
   readonly getDigestSectionTitles: (pageId: string, label: string) => Promise<readonly string[] | null>;
   readonly getPageMarkdown: (pageId: string) => Promise<string>;
   readonly appendMarkdown: (pageId: string, content: string) => Promise<void>;
+  // まとめの見出しで本文を分けて返す。まとめの見出しが無ければ null。
+  readonly getDigestParts: (pageId: string, label: string) => Promise<DigestParts | null>;
+  // 本文から content と一致する部分を消す。一致しなければ失敗する。
+  readonly deleteMarkdown: (pageId: string, content: string) => Promise<void>;
+  // ページをゴミ箱へ移す。Notion のゴミ箱から戻せる。
+  readonly trashPage: (pageId: string) => Promise<void>;
   // 本文中でページへ言及する表記。転記を省略した日から元ページへ辿れるようにする。
   readonly mentionOf: (pageId: string) => string;
 }

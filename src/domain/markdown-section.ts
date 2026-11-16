@@ -67,15 +67,37 @@ export function extractDigestSectionTitles(
   return headerIndex === -1 ? null : extractSectionTitles(lines.slice(headerIndex + 1).join("\n"));
 }
 
-// まとめの見出しから後ろを除いた本文を返す。まとめの見出しが無ければそのまま返す。
-// 締めの日の Daily を転記元にするとき、そのページが持つまとめまで写して入れ子にしないために使う。
-export function removeDigest(markdown: string, label: string): string {
+// 締めの日の Daily を、その日自身の本文（ownBody）と、まとめの見出しから末尾まで（digest）に分けたもの。
+// ownBody と digest を "\n" でつなぐと元の Markdown に戻る。
+export interface DigestParts {
+  readonly ownBody: string;
+  readonly digest: string;
+}
+
+// まとめの見出しで分ける。まとめの見出しが無ければ null。
+// 旧形式（divider → まとめの見出し）で書いたまとめもあるので、見出しの直前の divider はまとめに含める。
+export function splitAtDigest(markdown: string, label: string): DigestParts | null {
   const lines = markdown.split("\n");
   const headerIndex = lines.findIndex(function (line) {
     return line.trimEnd() === `# ${label}`;
   });
 
-  return headerIndex === -1
-    ? markdown
-    : `${lines.slice(0, headerIndex).join("\n").replace(/\n+$/, "")}\n`;
+  if (headerIndex === -1) {
+    return null;
+  }
+
+  const start = headerIndex > 0 && lines[headerIndex - 1]?.trim() === DIVIDER ? headerIndex - 1 : headerIndex;
+  return { ownBody: lines.slice(0, start).join("\n"), digest: lines.slice(start).join("\n") };
+}
+
+// まとめの見出しから後ろを除いた本文を返す。まとめの見出しが無ければそのまま返す。
+// 締めの日の Daily を転記元にするとき、そのページが持つまとめまで写して入れ子にしないために使う。
+export function removeDigest(markdown: string, label: string): string {
+  const parts = splitAtDigest(markdown, label);
+  return parts === null ? markdown : `${parts.ownBody.replace(/\n+$/, "")}\n`;
+}
+
+// 空行（空の段落）と divider だけの本文は、何も書いていないものとみなす。
+export function isBlankBody(markdown: string): boolean {
+  return removeDividers(markdown).replaceAll(EMPTY_BLOCK, "").trim() === "";
 }

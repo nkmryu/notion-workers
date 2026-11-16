@@ -9,15 +9,17 @@ import type { WebPageTitleLookup } from "./web-page-title-lookup";
 import { ContentRejectedError } from "../domain/diary-repository";
 import {
   DigestTarget,
+  WEEKLY_CLEANUP,
+  decideWeeklyCleanup,
   deriveDigestState,
   extractOwnBody,
   findClosingDaily,
-  listEndedDigestPeriods,
+  listDueDigestPeriods,
 } from "../domain/digest";
 import { createDigestHeader } from "../domain/markdown-section";
 import { buildRefsSection, collectRefs, selectRefTitle } from "../domain/refs";
 import { createTransferFallbackSection, createTransferSection } from "../domain/transfer-markdown";
-import { mapSequentially } from "../shared/sequence";
+import { countBy, mapSequentially } from "../shared/sequence";
 import { applyPageActions, planPageActions } from "./page-actions";
 
 export interface DigestResult {
@@ -27,24 +29,31 @@ export interface DigestResult {
   // 本文の拒否で案内文へ切り替えた日
   readonly fallbackDates: readonly Temporal.PlainDate[];
   readonly refs: number;
+  // 月のまとめに置き換わり、週のまとめを消した日曜の Daily の数（ゴミ箱へ移したものは含めない）
+  readonly weeklyDigestsRemoved: number;
+  // 週のまとめを除くと本文が空なので、ゴミ箱へ移した日曜の Daily の数
+  readonly pagesTrashed: number;
   readonly locks: number;
 }
+
+type WeeklyCleanupType = (typeof WEEKLY_CLEANUP)[keyof typeof WEEKLY_CLEANUP];
 
 interface DigestOutcome {
   readonly target: DigestTarget;
   readonly daysTransferred: number;
   readonly fallbackDates: readonly Temporal.PlainDate[];
   readonly refsWritten: boolean;
+  readonly cleanups: readonly WeeklyCleanupType[];
 }
 
-// 終わった期間のうち、締めの日の Daily がまだロックされていないものを読む。
+// 書く時期が来た期間のうち、締めの日の Daily がまだロックされていないものを読む。
 // ロック済みの締めの日は、まとめを書き終えているので読み直さない。
 function readTargets(
   diary: DiaryRepository,
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): Promise<readonly DigestTarget[]> {
-  const pending = listEndedDigestPeriods(dailies, today).flatMap(function (period) {
+  const pending = listDueDigestPeriods(dailies, today).flatMap(function (period) {
     const closing = findClosingDaily(period, dailies);
     return closing === null || closing.isLocked ? [] : [{ period, closing }];
   });
@@ -121,6 +130,31 @@ async function writeRefs(
   return withHeader.withRefs();
 }
 
+// 月のまとめに置き換わった週のまとめを、その月の日曜の Daily から消す。
+// 本文が空の日曜は Daily ごとゴミ箱へ移す。消し終えた日曜はまとめの見出しが無いので、再実行では何もしない。
+function removeReplacedWeeklyDigests(
+  diary: DiaryRepository,
+  target: DigestTarget,
+  dailies: readonly DailyPage[],
+): Promise<readonly WeeklyCleanupType[]> {
+  return mapSequentially(target.listReplacedWeeklyDigests(dailies), async function ({ dailyId, label }) {
+    const cleanup = decideWeeklyCleanup(await diary.getDigestParts(dailyId, label));
+
+    switch (cleanup.type) {
+      case WEEKLY_CLEANUP.removeDigest:
+        await diary.deleteMarkdown(dailyId, cleanup.digest);
+        break;
+      case WEEKLY_CLEANUP.trashPage:
+        await diary.trashPage(dailyId);
+        break;
+      case WEEKLY_CLEANUP.none:
+        break;
+    }
+
+    return cleanup.type;
+  });
+}
+
 async function writeDigest(
   diary: DiaryRepository,
   titles: WebPageTitleLookup,
@@ -137,18 +171,23 @@ async function writeDigest(
     return current.withTransferred(plan.date);
   }, withHeader);
   const withRefs = transferred.needsRefs ? await writeRefs(diary, titles, transferred) : null;
+  const written = withRefs ?? transferred;
+  // 月末の Daily のロックは、週のまとめを消し終えた印も兼ねる。消すのはロックより前に済ませる。
+  const cleanups = await removeReplacedWeeklyDigests(diary, written, dailies);
 
   return {
-    target: withRefs ?? transferred,
+    target: written,
     daysTransferred: plans.length,
     fallbackDates: plans.flatMap(function (plan, index) {
       return outcomes[index]?.fellBack ? [plan.date] : [];
     }),
     refsWritten: withRefs !== null,
+    cleanups,
   };
 }
 
-// 終わった週・月のまとめを締めの日の Daily の末尾に書き、期間の全日が揃ったら締めの日の Daily をロックする。
+// 今月の終わった週と、終わった月のまとめを締めの日の Daily の末尾に書く。月のまとめを写し終えたら、その月の週のまとめを消す。
+// 期間の全日が揃ったら締めの日の Daily をロックする。
 // 途中で失敗したら、その実行ではロックせずに止まり、次の実行が見出しを手がかりに続きから書く。
 export async function writeDigests(
   diary: DiaryRepository,
@@ -167,6 +206,16 @@ export async function writeDigests(
     }),
   );
 
+  const cleanupCounts = countBy(
+    outcomes.flatMap(function ({ cleanups }) {
+      return cleanups;
+    }),
+    function (cleanup) {
+      return cleanup;
+    },
+    [WEEKLY_CLEANUP.removeDigest, WEEKLY_CLEANUP.trashPage],
+  );
+
   return {
     targets: targets.length,
     daysTransferred: outcomes.reduce(function (total, { daysTransferred }) {
@@ -178,6 +227,8 @@ export async function writeDigests(
     refs: outcomes.filter(function ({ refsWritten }) {
       return refsWritten;
     }).length,
+    weeklyDigestsRemoved: cleanupCounts[WEEKLY_CLEANUP.removeDigest],
+    pagesTrashed: cleanupCounts[WEEKLY_CLEANUP.trashPage],
     locks: counts.locks,
   };
 }

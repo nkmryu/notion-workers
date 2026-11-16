@@ -29,7 +29,15 @@ describe("runMaintenance: Daily", () => {
       { method: "lockPage", pageId: "d-0731" },
     ]);
     expect(summary.daily).toEqual({ created: 1, renames: 0, locks: 1 });
-    expect(summary.digest).toEqual({ targets: 1, daysTransferred: 1, fallbackDates: [], refs: 0, locks: 1 });
+    expect(summary.digest).toEqual({
+      targets: 1,
+      daysTransferred: 1,
+      fallbackDates: [],
+      refs: 0,
+      weeklyDigestsRemoved: 0,
+      pagesTrashed: 0,
+      locks: 1,
+    });
   });
 
   it("今日の Daily があり、過去日がロック済みなら何もしない", async () => {
@@ -91,6 +99,45 @@ describe("runMaintenance: 週のまとめ", () => {
     ]);
   });
 
+  it("月が変わってから、前の月の週のまとめは書かない", async () => {
+    // 11-30 の実行が無かった週は、12-01 の実行で 26.W48 を書かず、11 月のまとめだけに入れることを保証する。
+    // 2026-11-29 は 26.W48 の日曜、2026-11-30 は月曜の月末。
+    const diary = createFakeDiary({
+      dailies: [
+        dailyOn("2026-11-28", { id: "d-1128", isLocked: true }),
+        dailyOn("2026-11-29", { id: "d-1129" }),
+        dailyOn("2026-11-30", { id: "d-1130" }),
+      ],
+      markdown: { "d-1128": "土曜\n", "d-1129": "日曜\n", "d-1130": "月末\n" },
+    });
+
+    await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-12-01"));
+
+    expect(diary.markdownOf("d-1129")).toBe("日曜\n");
+    expect(diary.markdownOf("d-1130")).toBe(
+      "月末\n# 26.M11\n## 26.11.28（土）\n---\n土曜\n<empty-block/>\n## 26.11.29（日）\n---\n日曜\n<empty-block/>\n",
+    );
+  });
+
+  it("月をまたぐ週は、前の月の日を週のまとめへ写さない", async () => {
+    // 10 月の日は 10 月のまとめだけに入り、11-01 の 26.W44 には写さないことを保証する。
+    // 2026-10-31 は土曜の月末、2026-11-01 は 26.W44 の日曜。
+    const diary = createFakeDiary({
+      dailies: [
+        dailyOn("2026-10-30", { id: "d-1030", isLocked: true }),
+        dailyOn("2026-10-31", { id: "d-1031", isLocked: true }),
+        dailyOn("2026-11-01", { id: "d-1101" }),
+        dailyOn("2026-11-02", { id: "d-1102" }),
+      ],
+      markdown: { "d-1030": "金曜\n", "d-1031": "土曜\n# 26.M10\n", "d-1101": "日曜\n" },
+    });
+
+    await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-11-02"));
+
+    expect(diary.calls).toEqual([{ method: "lockPage", pageId: "d-1101" }]);
+    expect(diary.markdownOf("d-1101")).toBe("日曜\n");
+  });
+
   it("日曜が月末と重なる日は、月のまとめだけを書く", async () => {
     // 同じ本文を 1 ページに 2 回並べないことを保証する。2026-05-31 は日曜で月末。
     const diary = createFakeDiary({
@@ -109,23 +156,23 @@ describe("runMaintenance: 週のまとめ", () => {
 });
 
 describe("runMaintenance: 月のまとめと Refs", () => {
+  // 11-29 は 26.W48 の締めの日で、週のまとめを書き終えてロック済み。
   const novemberEnd = {
     dailies: [
       dailyOn("2026-11-28", { id: "d-1128", isLocked: true }),
-      // 11-29 は 26.W48 の締めの日で、まとめを書き終えてロック済み。
       dailyOn("2026-11-29", { id: "d-1129", isLocked: true }),
       dailyOn("2026-11-30", { id: "d-1130" }),
       dailyOn("2026-12-01", { id: "d-1201" }),
     ],
     markdown: {
       "d-1128": "本文 [記事A](https://example.com/a)\n",
-      "d-1129": "本文 [記事B](https://example.com/b)\n",
+      "d-1129": "本文 [記事B](https://example.com/b)\n# 26.W48\n## 26.11.28（土）\n---\n本文 [記事A](https://example.com/a)\n<empty-block/>\n",
       "d-1130": "月末の本文 [記事C](https://example.com/c)\n",
     },
   };
 
-  it("月が変わった最初の実行で、転記 → Refs → ロックの順に 1 回で進める", async () => {
-    // Refs は月末の Daily 自身の本文も含めて初出順にまとめ、書き終えてから閉じることを保証する。
+  it("月が変わった最初の実行で、転記 → Refs → 週のまとめの消去 → ロックの順に 1 回で進める", async () => {
+    // Refs は月末の Daily 自身の本文も含めて初出順にまとめ、週のまとめは月のまとめを書き終えてから消し、最後に閉じることを保証する。
     const diary = createFakeDiary(novemberEnd);
 
     const summary = await runMaintenance(
@@ -136,14 +183,59 @@ describe("runMaintenance: 月のまとめと Refs", () => {
     expect(diary.calls.map((call) => call.method)).toEqual([
       "appendMarkdown", // まとめの見出し
       "appendMarkdown", // 11-28
-      "appendMarkdown", // 11-29
+      "appendMarkdown", // 11-29（週のまとめは写さない）
       "appendMarkdown", // Refs
+      "deleteMarkdown", // d-1129 の 26.W48
       "lockPage", // d-1130
     ]);
     expect(diary.markdownOf("d-1130")).toContain(
       "<empty-block/>\n## Refs\n- [記事C](https://example.com/c)\n- [記事A](https://example.com/a)\n- [記事B](https://example.com/b)\n",
     );
-    expect(summary.digest).toMatchObject({ targets: 1, daysTransferred: 2, refs: 1, locks: 1 });
+    expect(diary.markdownOf("d-1129")).toBe("本文 [記事B](https://example.com/b)\n");
+    expect(summary.digest).toMatchObject({
+      targets: 1,
+      daysTransferred: 2,
+      refs: 1,
+      weeklyDigestsRemoved: 1,
+      pagesTrashed: 0,
+      locks: 1,
+    });
+  });
+
+  it("週のまとめを除くと本文が空の日曜は、Daily ごとゴミ箱へ移す", async () => {
+    // まとめを置くためだけの日曜や、本文を書かなかった日曜を、空のページとして残さないことを保証する。
+    const diary = createFakeDiary({
+      ...novemberEnd,
+      markdown: {
+        ...novemberEnd.markdown,
+        "d-1129": "<empty-block/>\n# 26.W48\n## 26.11.28（土）\n---\n本文\n<empty-block/>\n",
+      },
+    });
+
+    const summary = await runMaintenance(
+      { diary, habits: createFakeHabits(), pageTitles: noPageTitles },
+      date("2026-12-01"),
+    );
+
+    expect(diary.calls.filter((call) => call.method === "trashPage" || call.method === "deleteMarkdown")).toEqual([
+      { method: "trashPage", pageId: "d-1129" },
+    ]);
+    expect(summary.digest).toMatchObject({ weeklyDigestsRemoved: 0, pagesTrashed: 1, locks: 1 });
+  });
+
+  it("週のまとめの消去が失敗したら、月末の Daily をロックせずに実行を止める", async () => {
+    // 月末のロックを「週のまとめを消し終えた」印として使えるよう、消し残しがあるまま閉じないことを保証する。
+    const diary = createFakeDiary({
+      ...novemberEnd,
+      rejectDelete() {
+        return new Error("週のまとめの消去に失敗");
+      },
+    });
+
+    await expect(
+      runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-12-01")),
+    ).rejects.toThrow("週のまとめの消去に失敗");
+    expect(diary.calls.filter((call) => call.method === "lockPage")).toEqual([]);
   });
 
   it("Refs の追記が失敗したら、月末の Daily をロックせずに実行を止める", async () => {
@@ -161,12 +253,13 @@ describe("runMaintenance: 月のまとめと Refs", () => {
     expect(diary.calls.filter((call) => call.method === "lockPage")).toEqual([]);
   });
 
-  it("転記と Refs を書き終えた月末の Daily には、再実行で何も足さずにロックだけする", async () => {
-    // まとめの見出しより後ろの日付見出しと Refs 見出しを冪等キーにして、二重に書かないことを保証する。
+  it("転記と Refs と週のまとめの消去を終えた月末の Daily には、再実行で何もせずにロックだけする", async () => {
+    // まとめの見出しより後ろの日付見出しと Refs 見出し、日曜の週のまとめの見出しを冪等キーにして、二重に書かず消さないことを保証する。
     const diary = createFakeDiary({
       ...novemberEnd,
       markdown: {
         ...novemberEnd.markdown,
+        "d-1129": "本文 [記事B](https://example.com/b)\n",
         "d-1130": "月末の本文\n# 26.M11\n## 26.11.28（土）\n---\n本文\n<empty-block/>\n## 26.11.29（日）\n---\n本文\n<empty-block/>\n## Refs\n- [x](https://example.com/x)\n",
       },
     });
@@ -179,44 +272,28 @@ describe("runMaintenance: 月のまとめと Refs", () => {
 
 describe("runMaintenance: まとめの入れ子", () => {
   it("週のまとめを書いた日曜の Daily を月のまとめへ写すとき、週のまとめは写さない", async () => {
-    // 週 → 月の順に続けて書いても、月のまとめに週のまとめが入れ子で重ならないことを保証する。
+    // 月のまとめに週のまとめが入れ子で重ならず、写し終えた後で日曜から週のまとめを消すことを保証する。
     // 2026-11-08 は 26.W45 の締めの日、2026-11-30 は 26.M11 の締めの日。
     const diary = createFakeDiary({
       dailies: [
         dailyOn("2026-11-02", { id: "d-1102", isLocked: true }),
-        dailyOn("2026-11-08", { id: "d-1108" }),
+        dailyOn("2026-11-08", { id: "d-1108", isLocked: true }),
         dailyOn("2026-11-30", { id: "d-1130" }),
         dailyOn("2026-12-01", { id: "d-1201" }),
       ],
-      markdown: { "d-1102": "月曜\n", "d-1108": "日曜\n", "d-1130": "月末\n" },
+      markdown: {
+        "d-1102": "月曜\n",
+        "d-1108": "日曜\n# 26.W45\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n",
+        "d-1130": "月末\n",
+      },
     });
 
     await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-12-01"));
 
-    expect(diary.markdownOf("d-1108")).toBe("日曜\n# 26.W45\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n");
     expect(diary.markdownOf("d-1130")).toBe(
       "月末\n# 26.M11\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n## 26.11.08（日）\n---\n日曜\n<empty-block/>\n",
     );
-  });
-
-  it("月のまとめを書いた月末の Daily を週のまとめへ写すとき、月のまとめは写さない", async () => {
-    // 月末が週の途中にある週で、日曜のまとめに月のまとめが重ならないことを保証する。
-    // 2026-10-31 は土曜の月末、2026-11-01 は 26.W44 の締めの日。
-    const diary = createFakeDiary({
-      dailies: [
-        dailyOn("2026-10-30", { id: "d-1030", isLocked: true }),
-        dailyOn("2026-10-31", { id: "d-1031" }),
-        dailyOn("2026-11-01", { id: "d-1101" }),
-        dailyOn("2026-11-02", { id: "d-1102" }),
-      ],
-      markdown: { "d-1030": "金曜\n", "d-1031": "土曜\n", "d-1101": "日曜\n" },
-    });
-
-    await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-11-02"));
-
-    expect(diary.markdownOf("d-1101")).toBe(
-      "日曜\n# 26.W44\n## 26.10.30（金）\n---\n金曜\n<empty-block/>\n## 26.10.31（土）\n---\n土曜\n<empty-block/>\n",
-    );
+    expect(diary.markdownOf("d-1108")).toBe("日曜\n");
   });
 });
 
