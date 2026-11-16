@@ -2,19 +2,22 @@ import type { Temporal } from "temporal-polyfill";
 
 import type { DailyPage } from "../domain/daily";
 import type { DiaryRepository } from "../domain/diary-repository";
-import type { TransferPlan } from "../domain/digest";
+import type { CarriedSection, DigestPeriod, TransferPlan } from "../domain/digest";
 import type { CollectedRef, ResolvedRef } from "../domain/refs";
 import type { WebPageTitleLookup } from "./web-page-title-lookup";
 
 import { ContentRejectedError } from "../domain/diary-repository";
 import {
   DigestTarget,
+  TRANSFER_SOURCE,
   WEEKLY_CLEANUP,
   decideWeeklyCleanup,
   deriveDigestState,
+  extractCarriedSections,
   extractOwnBody,
   findClosingDaily,
   listDueDigestPeriods,
+  listWeeklyDigestPlaces,
   selectRetiredDailies,
 } from "../domain/digest";
 import { createDigestHeader } from "../domain/markdown-section";
@@ -50,6 +53,20 @@ interface DigestOutcome {
   readonly dailiesTrashed: number;
 }
 
+// 月のまとめへ写す、その月の日曜の Daily にある週のまとめの節。週のまとめの期間では読まない。
+async function readCarriedSections(
+  diary: DiaryRepository,
+  period: DigestPeriod,
+  dailies: readonly DailyPage[],
+): Promise<readonly CarriedSection[]> {
+  const sections = await mapSequentially(listWeeklyDigestPlaces(period, dailies), async function ({ dailyId, label }) {
+    const parts = await diary.getDigestParts(dailyId, label);
+    return parts === null ? [] : extractCarriedSections(parts.digest);
+  });
+
+  return sections.flat();
+}
+
 // 書く時期が来た期間のうち、締めの日の Daily がまだロックされていないものを読む。
 // ロック済みの締めの日は、まとめを書き終えているので読み直さない。
 function readTargets(
@@ -64,7 +81,8 @@ function readTargets(
 
   return mapSequentially(pending, async function ({ period, closing }) {
     const titles = await diary.getDigestSectionTitles(closing.id, period.label);
-    return new DigestTarget(period, closing, deriveDigestState(titles));
+    const carried = await readCarriedSections(diary, period, dailies);
+    return new DigestTarget(period, closing, deriveDigestState(titles), carried);
   });
 }
 
@@ -82,6 +100,13 @@ async function transferOne(
   destinationPageId: string,
   plan: TransferPlan,
 ): Promise<{ readonly fellBack: boolean }> {
+  if (plan.source === TRANSFER_SOURCE.weeklyDigest) {
+    // 週のまとめの節は一度 Notion が受け付けた本文なので、拒まれても注記へ切り替えずに止める。
+    // 注記にすると、この後で週のまとめを消したときに、その日の本文がどこにも残らない。
+    await diary.appendMarkdown(destinationPageId, createTransferSection(plan.heading, [plan.body]));
+    return { fellBack: false };
+  }
+
   const bodies = await mapSequentially(plan.dailyPageIds, async function (pageId) {
     return extractOwnBody(await diary.getPageMarkdown(pageId), plan.date);
   });

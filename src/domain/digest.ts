@@ -7,7 +7,7 @@ import { Temporal } from "temporal-polyfill";
 import type { DigestParts } from "./markdown-section";
 
 import { compareDailies, formatDailyTitle, parseDailyTitle } from "./daily";
-import { isBlankBody, removeDigest, stripFencedCode } from "./markdown-section";
+import { isBlankBody, removeDigest } from "./markdown-section";
 import { PAGE_ACTION_TYPE } from "./page";
 import { REFS_HEADING_TITLE } from "./refs";
 import { UNTRANSFERRED_NOTICES } from "./transfer-markdown";
@@ -143,19 +143,21 @@ export function findClosingDaily(
 }
 
 // 締めの日に Daily が無い期間は、まとめの置き場として締めの日の Daily を作る。
-// 作るのは、締めの日でない日の Daily がある期間だけ。作る Daily は日曜か月末なので、
-// 作った Daily が別の種類の期間（月末なら週、日曜なら月）を生み、締めの日を作り続ける連鎖を止める。
+// 作るのは、締めの日でない日の Daily がある期間だけ。月は日曜の Daily も数える。週が終わって普通の日を
+// ゴミ箱へ移した月でも、日曜にある週のまとめを月のまとめへ移す置き場が要るため。
+// 作った Daily が締めの日を作り続ける連鎖は起きない。作った月末の Daily は、日曜が同じ月にある週に入らない。
+// 作った日曜の Daily は、その週に普通の日がある月にしか作らないので、月末の Daily を新たに生まない。
 export function planMissingClosingDailies(
   dailies: readonly DailyPage[],
   today: Temporal.PlainDate,
 ): readonly NewDaily[] {
   return listDueDigestPeriods(dailies, today)
     .filter(function (period) {
-      const hasOrdinaryDay = dailies.some(function (daily) {
-        return period.contains(daily.date) && DigestPeriod.closingOn(daily.date) === null;
+      const hasSourceDay = dailies.some(function (daily) {
+        return period.contains(daily.date) && !daily.isOn(period.closingDate);
       });
 
-      return hasOrdinaryDay && findClosingDaily(period, dailies) === null;
+      return hasSourceDay && findClosingDaily(period, dailies) === null;
     })
     .map(function ({ closingDate }) {
       return { title: formatDailyTitle(closingDate), date: closingDate };
@@ -201,24 +203,52 @@ export function decideWeeklyCleanup(parts: DigestParts | null): WeeklyCleanup {
 
 // まとめを、日付の見出しごとの本文に分けたもの。Refs の見出しより後ろは date が null。
 interface DateSection {
+  readonly heading: string;
   readonly date: Temporal.PlainDate | null;
   readonly lines: readonly string[];
 }
 
+interface SplitState {
+  readonly sections: readonly DateSection[];
+  readonly inFence: boolean;
+}
+
+// 子ブロックの中のコードブロックは、タブでインデントされた行になる。
+const FENCE_LINE_PATTERN = /^\s*```/;
+
 // 本文に見出し 2 を書いた日もあるので、日付の見出しと Refs の見出しだけで区切る。
+// 節の本文は月のまとめへ写すので、コードブロックは残し、その中の見出しでは区切らない。
 function splitByDateHeadings(digest: string): readonly DateSection[] {
-  return stripFencedCode(digest)
-    .split("\n")
-    .reduce<readonly DateSection[]>(function (sections, line) {
-      const heading = /^## (.+)$/.exec(line)?.[1]?.trim();
+  return digest.split("\n").reduce<SplitState>(
+    function ({ sections, inFence }, line) {
+      const heading = inFence ? undefined : /^## (.+)$/.exec(line)?.[1]?.trim();
 
       if (heading !== undefined && (parseDailyTitle(heading) !== null || heading === REFS_HEADING_TITLE)) {
-        return [...sections, { date: parseDailyTitle(heading), lines: [] }];
+        return { sections: [...sections, { heading, date: parseDailyTitle(heading), lines: [] }], inFence };
       }
 
       const last = sections.at(-1);
-      return last === undefined ? sections : sections.with(-1, { ...last, lines: [...last.lines, line] });
-    }, []);
+      return {
+        sections: last === undefined ? sections : sections.with(-1, { ...last, lines: [...last.lines, line] }),
+        inFence: FENCE_LINE_PATTERN.test(line) ? !inFence : inFence,
+      };
+    },
+    { sections: [], inFence: false },
+  ).sections;
+}
+
+// 週のまとめにある 1 日分の節。週が終わって元の Daily をゴミ箱へ移した日は、月のまとめへここから写す。
+export interface CarriedSection {
+  readonly date: Temporal.PlainDate;
+  readonly heading: string;
+  readonly body: string;
+}
+
+// digest は週のまとめ（見出しから末尾まで）。
+export function extractCarriedSections(digest: string): readonly CarriedSection[] {
+  return splitByDateHeadings(digest).flatMap(function ({ heading, date, lines }) {
+    return date === null ? [] : [{ date, heading, body: lines.join("\n") }];
+  });
 }
 
 // まとめのうち、本文を写せなかった日（コピーできないブロックの案内か、転記を省いた注記がある日）。
@@ -234,8 +264,8 @@ export function listUntransferredDates(digest: string): readonly Temporal.PlainD
   });
 }
 
-// 月のまとめに置き換わった普通の日の Daily のうち、ゴミ箱へ移すもの。
-// 本文を写せなかった日は、元の Daily にしか本文が無いので残す。digest は月のまとめ（見出しから末尾まで）。
+// まとめに置き換わった普通の日の Daily のうち、ゴミ箱へ移すもの。
+// 本文を写せなかった日は、元の Daily にしか本文が無いので残す。digest は週か月のまとめ（見出しから末尾まで）。
 export function selectRetiredDailies(
   candidates: readonly DailyPage[],
   digest: string | null,
@@ -249,10 +279,30 @@ export function selectRetiredDailies(
   });
 }
 
-// 月のまとめに置き換わる週のまとめの置き場。
-export interface ReplacedWeeklyDigest {
+// 週のまとめの置き場（日曜の Daily）と、その週の見出し。
+export interface WeeklyDigestPlace {
   readonly dailyId: string;
   readonly label: string;
+}
+
+// 月の中にある週のまとめの置き場。月末の Daily は月のまとめの置き場なので含めない。
+export function listWeeklyDigestPlaces(
+  month: DigestPeriod,
+  dailies: readonly DailyPage[],
+): readonly WeeklyDigestPlace[] {
+  if (month.kind !== DIGEST_KIND.monthly) {
+    return [];
+  }
+
+  return dailies
+    .filter(function (daily) {
+      return month.contains(daily.date);
+    })
+    .toSorted(compareDailies)
+    .flatMap(function (daily) {
+      const own = DigestPeriod.closingOn(daily.date);
+      return own?.kind === DIGEST_KIND.weekly ? [{ dailyId: daily.id, label: own.label }] : [];
+    });
 }
 
 // まとめの状態: まとめの見出しがあるか、どの日を転記済みか、Refs があるか。
@@ -284,29 +334,50 @@ export function extractOwnBody(markdown: string, date: Temporal.PlainDate): stri
   return ownPeriod === null ? markdown : removeDigest(markdown, ownPeriod.label);
 }
 
+// 1 日分を写す元。ふつうは元の Daily から写し、元の Daily をゴミ箱へ移した日は週のまとめの節から写す。
+export const TRANSFER_SOURCE = {
+  dailies: "dailies",
+  weeklyDigest: "weeklyDigest",
+} as const;
+
 // 1 日分を写す計画。heading は日付見出しで、転記済み判定の冪等キーになる。同じ日の Daily は 1 つの見出しの下へ並べる。
-export interface TransferPlan {
+interface DailiesTransferPlan {
+  readonly source: typeof TRANSFER_SOURCE.dailies;
   readonly date: Temporal.PlainDate;
   readonly heading: string;
   readonly dailyPageIds: readonly string[];
 }
 
-function addToPlans(plans: readonly TransferPlan[], daily: DailyPage): readonly TransferPlan[] {
+interface WeeklyDigestTransferPlan {
+  readonly source: typeof TRANSFER_SOURCE.weeklyDigest;
+  readonly date: Temporal.PlainDate;
+  readonly heading: string;
+  readonly body: string;
+}
+
+export type TransferPlan = DailiesTransferPlan | WeeklyDigestTransferPlan;
+
+function addToPlans(plans: readonly DailiesTransferPlan[], daily: DailyPage): readonly DailiesTransferPlan[] {
   const last = plans.at(-1);
 
   if (last !== undefined && last.date.equals(daily.date)) {
     return plans.with(-1, { ...last, dailyPageIds: [...last.dailyPageIds, daily.id] });
   }
 
-  return [...plans, { date: daily.date, heading: daily.expectedTitle, dailyPageIds: [daily.id] }];
+  return [
+    ...plans,
+    { source: TRANSFER_SOURCE.dailies, date: daily.date, heading: daily.expectedTitle, dailyPageIds: [daily.id] },
+  ];
 }
 
 // まとめを書く締めの日の Daily と、その期間・まとめの状態。ロックは、期間の全日が転記されたときに限る。
+// carried は、月のまとめへ写す週のまとめの節（その月の日曜の Daily から読む）。週のまとめでは空。
 export class DigestTarget {
   constructor(
     readonly period: DigestPeriod,
     readonly closingDaily: DailyPage,
     readonly state: DigestState,
+    readonly carried: readonly CarriedSection[] = [],
   ) {}
 
   get id(): string {
@@ -337,24 +408,60 @@ export class DigestTarget {
     });
   }
 
+  // 週のまとめから写す節: 期間内で、元の Daily が無い日だけ。元の Daily がある日（本文を写せず残した日など）は
+  // Daily から写す。
+  private carriedIn(dailies: readonly DailyPage[]): readonly CarriedSection[] {
+    const sources = this.sourcesIn(dailies);
+
+    return this.carried.filter((section) => {
+      return (
+        this.period.contains(section.date) &&
+        !sources.some(function (daily) {
+          return daily.isOn(section.date);
+        })
+      );
+    });
+  }
+
   planTransfers(dailies: readonly DailyPage[]): readonly TransferPlan[] {
-    return this.sourcesIn(dailies)
+    const fromDailies = this.sourcesIn(dailies)
       .filter((daily) => {
         return !this.isTransferred(daily.date);
       })
       .reduce(addToPlans, []);
-  }
+    const fromWeeklyDigests = this.carriedIn(dailies)
+      .filter((section) => {
+        return !this.isTransferred(section.date);
+      })
+      .map(function ({ date, heading, body }): WeeklyDigestTransferPlan {
+        return { source: TRANSFER_SOURCE.weeklyDigest, date, heading, body };
+      });
 
-  isComplete(dailies: readonly DailyPage[]): boolean {
-    return this.sourcesIn(dailies).every((daily) => {
-      return this.isTransferred(daily.date);
+    return [...fromDailies, ...fromWeeklyDigests].toSorted(function (left, right) {
+      return Temporal.PlainDate.compare(left.date, right.date);
     });
   }
 
-  // 月のまとめを写し終えたら、その月の普通の日（日曜でも月末でもない日）の Daily はゴミ箱へ移す候補になる。
-  // 日曜と月末の Daily は残す。写し終えるまでは候補にしない。
+  isComplete(dailies: readonly DailyPage[]): boolean {
+    const dates = [
+      ...this.sourcesIn(dailies).map(function ({ date }) {
+        return date;
+      }),
+      ...this.carriedIn(dailies).map(function ({ date }) {
+        return date;
+      }),
+    ];
+
+    return dates.every((date) => {
+      return this.isTransferred(date);
+    });
+  }
+
+  // まとめを写し終えたら、期間の普通の日（日曜でも月末でもない日）の Daily はゴミ箱へ移す候補になる。
+  // 週のまとめでは今月の終わった週の月〜土、月のまとめでは月の中の残り。日曜と月末の Daily は残す。
+  // 写し終えるまでは候補にしない。
   listOrdinaryDailies(dailies: readonly DailyPage[]): readonly DailyPage[] {
-    if (this.period.kind !== DIGEST_KIND.monthly || !this.isComplete(dailies)) {
+    if (!this.isComplete(dailies)) {
       return [];
     }
 
@@ -365,15 +472,8 @@ export class DigestTarget {
 
   // 月のまとめを写し終えたら、その月の日曜の Daily にある週のまとめを消す。
   // 写し終えるまでは消さない。消した日の本文が、どのまとめにも無い時間を作らないため。
-  listReplacedWeeklyDigests(dailies: readonly DailyPage[]): readonly ReplacedWeeklyDigest[] {
-    if (this.period.kind !== DIGEST_KIND.monthly || !this.isComplete(dailies)) {
-      return [];
-    }
-
-    return this.sourcesIn(dailies).flatMap(function (daily) {
-      const own = DigestPeriod.closingOn(daily.date);
-      return own?.kind === DIGEST_KIND.weekly ? [{ dailyId: daily.id, label: own.label }] : [];
-    });
+  listReplacedWeeklyDigests(dailies: readonly DailyPage[]): readonly WeeklyDigestPlace[] {
+    return this.isComplete(dailies) ? listWeeklyDigestPlaces(this.period, dailies) : [];
   }
 
   // まとめが揃ったら締めの日の Daily を閉じる。
@@ -384,7 +484,7 @@ export class DigestTarget {
   }
 
   withHeader(): DigestTarget {
-    return new DigestTarget(this.period, this.closingDaily, { ...this.state, hasHeader: true });
+    return new DigestTarget(this.period, this.closingDaily, { ...this.state, hasHeader: true }, this.carried);
   }
 
   // 期間外の日は転記計画が作らないので、混入は不整合として失敗させる。
@@ -393,13 +493,15 @@ export class DigestTarget {
       throw new Error(`${this.label} の期間外の日付です: ${date.toString()}`);
     }
 
-    return new DigestTarget(this.period, this.closingDaily, {
-      ...this.state,
-      transferredDates: [...this.state.transferredDates, date],
-    });
+    return new DigestTarget(
+      this.period,
+      this.closingDaily,
+      { ...this.state, transferredDates: [...this.state.transferredDates, date] },
+      this.carried,
+    );
   }
 
   withRefs(): DigestTarget {
-    return new DigestTarget(this.period, this.closingDaily, { ...this.state, hasRefs: true });
+    return new DigestTarget(this.period, this.closingDaily, { ...this.state, hasRefs: true }, this.carried);
   }
 }
