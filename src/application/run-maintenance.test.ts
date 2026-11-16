@@ -24,8 +24,8 @@ describe("runMaintenance: Daily", () => {
     expect(diary.calls).toEqual([
       { method: "createDaily", title: "26.08.01（土）", date: date("2026-08-01") },
       { method: "lockPage", pageId: "d-0730" },
-      { method: "appendMarkdown", pageId: "d-0731", content: "---\n# 26.M07\n" },
-      { method: "appendMarkdown", pageId: "d-0731", content: "---\n## 26.07.30（木）\n木曜\n" },
+      { method: "appendMarkdown", pageId: "d-0731", content: "# 26.M07\n" },
+      { method: "appendMarkdown", pageId: "d-0731", content: "## 26.07.30（木）\n---\n木曜\n<empty-block/>\n" },
       { method: "lockPage", pageId: "d-0731" },
     ]);
     expect(summary.daily).toEqual({ created: 1, renames: 0, locks: 1 });
@@ -69,7 +69,7 @@ describe("runMaintenance: 週のまとめ", () => {
       "lockPage", // d-1115
     ]);
     expect(diary.markdownOf("d-1115")).toBe(
-      "日曜の本文\n---\n# 26.W46\n---\n## 26.11.09（月）\n月曜\n---\n## 26.11.10（火）\n火曜\n",
+      "日曜の本文\n# 26.W46\n## 26.11.09（月）\n---\n月曜\n<empty-block/>\n## 26.11.10（火）\n---\n火曜\n<empty-block/>\n",
     );
     expect(summary.digest).toMatchObject({ targets: 1, daysTransferred: 2, refs: 0, locks: 1 });
   });
@@ -85,8 +85,8 @@ describe("runMaintenance: 週のまとめ", () => {
 
     expect(diary.calls).toEqual([
       { method: "createDaily", title: "26.11.15（日）", date: date("2026-11-15") },
-      { method: "appendMarkdown", pageId: "daily-2026-11-15", content: "---\n# 26.W46\n" },
-      { method: "appendMarkdown", pageId: "daily-2026-11-15", content: "---\n## 26.11.13（金）\n金曜\n" },
+      { method: "appendMarkdown", pageId: "daily-2026-11-15", content: "# 26.W46\n" },
+      { method: "appendMarkdown", pageId: "daily-2026-11-15", content: "## 26.11.13（金）\n---\n金曜\n<empty-block/>\n" },
       { method: "lockPage", pageId: "daily-2026-11-15" },
     ]);
   });
@@ -104,7 +104,7 @@ describe("runMaintenance: 週のまとめ", () => {
 
     await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-06-01"));
 
-    expect(diary.markdownOf("d-0531")).toBe("---\n# 26.M05\n---\n## 26.05.30（土）\n土曜\n");
+    expect(diary.markdownOf("d-0531")).toBe("# 26.M05\n## 26.05.30（土）\n---\n土曜\n<empty-block/>\n");
   });
 });
 
@@ -141,7 +141,7 @@ describe("runMaintenance: 月のまとめと Refs", () => {
       "lockPage", // d-1130
     ]);
     expect(diary.markdownOf("d-1130")).toContain(
-      "---\n## Refs\n- [記事C](https://example.com/c)\n- [記事A](https://example.com/a)\n- [記事B](https://example.com/b)\n",
+      "<empty-block/>\n## Refs\n- [記事C](https://example.com/c)\n- [記事A](https://example.com/a)\n- [記事B](https://example.com/b)\n",
     );
     expect(summary.digest).toMatchObject({ targets: 1, daysTransferred: 2, refs: 1, locks: 1 });
   });
@@ -167,7 +167,7 @@ describe("runMaintenance: 月のまとめと Refs", () => {
       ...novemberEnd,
       markdown: {
         ...novemberEnd.markdown,
-        "d-1130": "月末の本文\n---\n# 26.M11\n---\n## 26.11.28（土）\n本文\n---\n## 26.11.29（日）\n本文\n---\n## Refs\n- [x](https://example.com/x)\n",
+        "d-1130": "月末の本文\n# 26.M11\n## 26.11.28（土）\n---\n本文\n<empty-block/>\n## 26.11.29（日）\n---\n本文\n<empty-block/>\n## Refs\n- [x](https://example.com/x)\n",
       },
     });
 
@@ -193,9 +193,9 @@ describe("runMaintenance: まとめの入れ子", () => {
 
     await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-12-01"));
 
-    expect(diary.markdownOf("d-1108")).toBe("日曜\n---\n# 26.W45\n---\n## 26.11.02（月）\n月曜\n");
+    expect(diary.markdownOf("d-1108")).toBe("日曜\n# 26.W45\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n");
     expect(diary.markdownOf("d-1130")).toBe(
-      "月末\n---\n# 26.M11\n---\n## 26.11.02（月）\n月曜\n---\n## 26.11.08（日）\n日曜\n",
+      "月末\n# 26.M11\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n## 26.11.08（日）\n---\n日曜\n<empty-block/>\n",
     );
   });
 
@@ -215,7 +215,7 @@ describe("runMaintenance: まとめの入れ子", () => {
     await runMaintenance({ diary, habits: createFakeHabits(), pageTitles: noPageTitles }, date("2026-11-02"));
 
     expect(diary.markdownOf("d-1101")).toBe(
-      "日曜\n---\n# 26.W44\n---\n## 26.10.30（金）\n金曜\n---\n## 26.10.31（土）\n土曜\n",
+      "日曜\n# 26.W44\n## 26.10.30（金）\n---\n金曜\n<empty-block/>\n## 26.10.31（土）\n---\n土曜\n<empty-block/>\n",
     );
   });
 });

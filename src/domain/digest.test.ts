@@ -114,19 +114,19 @@ describe("締めの日の Daily", () => {
 describe("extractOwnBody", () => {
   it("締めの日の Daily は、そのページが持つまとめを除いた本文にする", () => {
     // 日曜の Daily を月のまとめへ写すとき、日曜が持つ週のまとめまで写して入れ子にしないことを保証する。
-    const sunday = "日曜の本文\n---\n# 26.W45\n---\n## 26.11.02（月）\n月曜\n";
+    const sunday = "日曜の本文\n# 26.W45\n## 26.11.02（月）\n---\n月曜\n<empty-block/>\n";
 
     expect(extractOwnBody(sunday, date("2026-11-08"))).toBe("日曜の本文\n");
   });
 
   it("月末の Daily は月のまとめの見出しで切る", () => {
     // 月末の Daily を週のまとめへ写すとき、月のまとめを写さないことを保証する。
-    expect(extractOwnBody("金曜\n---\n# 26.M10\n## Refs\n", date("2026-10-31"))).toBe("金曜\n");
+    expect(extractOwnBody("金曜\n# 26.M10\n## Refs\n", date("2026-10-31"))).toBe("金曜\n");
   });
 
   it("締めの日でない日は、本文をそのまま返す", () => {
     // 本文に見出し 1 があっても、ふつうの日の本文を削らないことを保証する。
-    expect(extractOwnBody("火曜\n---\n# 26.W45\n", date("2026-11-03"))).toBe("火曜\n---\n# 26.W45\n");
+    expect(extractOwnBody("火曜\n# 26.W45\n", date("2026-11-03"))).toBe("火曜\n# 26.W45\n");
   });
 });
 

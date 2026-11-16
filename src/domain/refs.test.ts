@@ -95,8 +95,8 @@ describe("collectRefs", () => {
 });
 
 describe("buildRefsSection", () => {
-  it("divider・Refs見出し・リンク付きbulletのMarkdownを構築する", () => {
-    // Refsセクションが転記と同じ見出し規則のMarkdownになることを保証する。
+  it("Refs見出し・リンク付きbulletのMarkdownを構築する", () => {
+    // Refsセクションが転記と同じ見出し規則のMarkdownになり、divider を持たないことを保証する。
     expect(
       buildRefsSection([
         { url: "https://example.com/article", title: "記事タイトル" },
@@ -104,7 +104,6 @@ describe("buildRefsSection", () => {
       ]),
     ).toBe(
       [
-        "---",
         "## Refs",
         "- [記事タイトル](https://example.com/article)",
         "- [https://example.com/plain](https://example.com/plain)",
@@ -117,7 +116,7 @@ describe("buildRefsSection", () => {
     // 記事タイトルの記号がリンク構文や装飾として解釈されないことを保証する。
     expect(
       buildRefsSection([{ url: "https://example.com/a", title: "a [b] *c* | d" }]),
-    ).toBe("---\n## Refs\n- [a \\[b\\] \\*c\\* \\| d](https://example.com/a)\n");
+    ).toBe("## Refs\n- [a \\[b\\] \\*c\\* \\| d](https://example.com/a)\n");
   });
 
   it("URLが0件ならセクションを構築しない", () => {
