@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "notion-workers-cron",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-20",
+  // Cron だけで動かし、HTTP の入口は公開しない。
+  "workers_dev": false,
+  "preview_urls": false,
+  // dispatch の失敗（例外）を Cloudflare のログで後から読めるようにする。
+  "observability": { "enabled": true },
+  "triggers": {
+    // UTC。JST 2:23 が本番、7:23 は 2:23 が失敗したときの再試行。
+    // .github/workflows/maintain.yml の schedule（予備）と同じ時刻にそろえる。
+    "crons": ["23 17 * * *", "23 22 * * *"]
+  }
+}
