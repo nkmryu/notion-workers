@@ -1,13 +1,17 @@
 name: Maintain Notion diary pages
 
 on:
+  # 本番の起動は Cloudflare Workers の Cron（cron/）が送る workflow_dispatch。
+  workflow_dispatch:
+
+  # 予備。Cloudflare の Cron と同じ時刻（UTC。JST 2:23 と 7:23）に置く。
+  # GitHub の schedule は数時間遅れ、取りこぼしもあるので本番にはしない。
+  # 消さないのは、Cloudflare の Cron やトークンが止まっても、遅れてでも Daily を作るため。
+  # どちらから起動しても concurrency で直列になり、処理は冪等なので、二重に動いても害はない。
+  # 毎時 0 分は schedule が混み、遅延や取りこぼしが増えると GitHub の文書にあるため、0 分を避ける。
   schedule:
-    # cron は UTC 指定。JST では 2:23 に実行し、7:23 は失敗時の再試行として同じ処理を走らせる。
-    # 毎時 0 分は schedule が混み、遅延や取りこぼしが増えると GitHub の文書にあるため、0 分を避ける。
     - cron: "23 17 * * *"
     - cron: "23 22 * * *"
-
-  workflow_dispatch:
 
 # 同時に走ると同じ日の Daily・習慣ページを二重作成し、同じまとめを二重に書き得るため、実行を直列化する。
 concurrency:

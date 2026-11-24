@@ -1,6 +1,6 @@
 # Notion Workers
 
-Notion の日誌データベース（「ナレッジ」）と習慣データベース（「習慣」）を毎日整える GitHub Actions ジョブと、そのローカル CLI。Daily の作成とロック、習慣ページの作成、週・月のまとめ（転記と Refs）を 1 回の実行で行う。Notion API へは `@notionhq/client` でアクセスする。
+Notion の日誌データベース（「ナレッジ」）と習慣データベース（「習慣」）を毎日整える GitHub Actions ジョブと、そのローカル CLI。ジョブは Cloudflare Workers の Cron（`cron/`）が毎日起動する。Daily の作成とロック、習慣ページの作成、週・月のまとめ（転記と Refs）を 1 回の実行で行う。Notion API へは `@notionhq/client` でアクセスする。
 
 ## まず動かす
 
@@ -144,14 +144,64 @@ Notion の Markdown API で行う。
 | `NOTION_HABIT_DATA_SOURCE_ID` | 習慣データベースの data source ID（秘密）。取得方法は `NOTION_DATA_SOURCE_ID` と同じ |
 | `NOTION_TEMPLATE_ID` | 日次テンプレートのページ ID |
 
-## 定期実行（GitHub Actions）
+## 定期実行（Cloudflare Workers の Cron → GitHub Actions）
 
-`.github/workflows/maintain.yml` が JST 2:23 と 7:23（UTC `23 17 * * *` と `23 22 * * *`）に `npm run maintain` を実行する。2:23 が本番で、7:23 は 2:23 が失敗したときの再試行（冪等なので成功時は何もしない）。毎時 0 分は schedule が混むため避けている。`workflow_dispatch` で手動実行もできる。
+処理は `.github/workflows/maintain.yml` が GitHub Actions で動かす。起動の合図は Cloudflare Workers の Cron（`cron/`）が送る。Cron は JST 2:23 と 7:23（UTC `23 17 * * *` と `23 22 * * *`）に、GitHub の REST API で `maintain.yml` を `workflow_dispatch`（`ref: main`）で起動する。2:23 が本番で、7:23 は 2:23 が失敗したときの再試行（冪等なので成功時は何もしない）。JST 0 時ではなく 2:23 にするのは、日付が変わった直後はまだ前日の Daily を書いているから。
 
 - リポジトリの Actions secrets に `NOTION_TOKEN`・`NOTION_DATA_SOURCE_ID`・`NOTION_HABIT_DATA_SOURCE_ID` を登録する。テンプレート ID は秘密ではないため workflow ファイルに直接定義している
 - `concurrency` で同時実行を防ぎ、同じ日の Daily・習慣ページを二重に作らず、同じまとめを二重に書かない。手元の `npm run maintain` はこの制御の外にあるので、定期実行の時刻と重ねない
-- GitHub Actions の schedule トリガーは数時間遅れることがあり、取りこぼされることもある（2026-09-21〜11-10 の実績で 1.7〜6.8 時間）。処理は実行時刻の JST 日付を基準にするため、遅延しても翌日分を誤って作らない
+- 処理は実行時刻の JST 日付を基準にするため、起動が遅れても翌日分を誤って作らない
 - 実行結果は各 run のログで確認する。処理の末尾に Daily・習慣・まとめの件数を出力する
+
+### 起点を GitHub の schedule から Cloudflare へ移した理由
+
+GitHub Actions の schedule は 2026-08 末から GitHub 全体で大きく遅れ、取りこぼしも出ている。このリポジトリで、予約の時刻から実際に起動するまでの遅れの中央値は次のとおり。
+
+| 期間 | 遅れの中央値 |
+|---|---|
+| 2026-09 | 3.0 時間 |
+| 2026-10 | 4.1 時間 |
+| 2026-11-01〜09 | 5.0 時間 |
+| 2026-11-11〜23 | 5.4 時間（最大 7.5 時間） |
+
+11-24 は 9 時間以上たっても 1 回も起動せず、Daily が作られなかった。11-10 に毎時 0 分から 23 分へずらしても改善しなかった。遅れは GitHub が run を作るまでの段階で起きていて、run ができてから job が始まるまでは約 2 秒だった。`workflow_dispatch` は 2 秒で始まる。
+
+Cloudflare Workers の Cron は、以前の notion-daily-worker（JST 0:05）で 2026-07-19〜09-13 に Notion に残る 8 件すべてを 0:05〜0:06 に作っていた。処理全体を Cloudflare で動かすのをやめたのは、無料プランの 1 回あたり 50 サブリクエストの上限に当たるからだった。今の Worker は dispatch を 1 回呼ぶだけなので、この上限には当たらない。
+
+### schedule を予備に残す理由
+
+`maintain.yml` の schedule は消さず、Cloudflare の Cron と同じ時刻に残している。Cloudflare の Cron が動かないときやトークンが切れたときも、遅れてでも Daily を作るためである。Cloudflare から起動した run と schedule の run は `concurrency` で直列になり、処理は冪等なので、後から動いた方は何もしない。
+
+### トークンの作り方と置き場所
+
+Worker は GitHub の fine-grained personal access token で dispatch を呼ぶ。
+
+1. GitHub の Settings → Developer settings → Personal access tokens → Fine-grained tokens で、新しいトークンを作る
+   - Repository access: Only select repositories で `nkmryu/notion-workers` だけを選ぶ
+   - Repository permissions: Actions を Read and write にする（Metadata の Read-only は自動で付く）
+2. トークンを Worker の secret `GITHUB_TOKEN` に置く。リポジトリのファイル（`.env`・`.dev.vars` を含む）には書かない
+
+```sh
+cd cron && npm ci && npx wrangler secret put GITHUB_TOKEN
+```
+
+トークンの期限が切れると、Cron は 401 で失敗し、schedule の予備だけが動く。期限の前に作り直し、同じコマンドで置き換える。
+
+### デプロイ
+
+```sh
+cd cron && npm ci && npx wrangler deploy
+```
+
+wrangler のログインが切れているときは、先に `npx wrangler login` を打つ（ブラウザで Cloudflare に認可する）。
+
+`cron/` は wrangler だけを依存に持つ別のパッケージにしている。GitHub Actions の `npm ci` に wrangler を入れないためである。Worker のコードの型検査とテストは、ルートの `npm run typecheck` と `npm test` に含まれる。
+
+### 確かめ方
+
+- 起動した run: `gh run list --workflow maintain.yml --event workflow_dispatch --limit 5`。Cloudflare からの run は `workflow_dispatch`、予備の run は `schedule` と出る
+- Cron の成否: Cloudflare のダッシュボードの Workers & Pages → `notion-workers-cron` で、Cron の実行の記録とログを見る。dispatch が 204 以外を返したときは、HTTP の状態と GitHub の説明を載せた例外が残る
+- 登録されている Cron: `npx wrangler deploy` の出力の `schedule:` の行と、ダッシュボードの Settings → Trigger events
 
 ## 動作確認
 
@@ -162,6 +212,7 @@ npm test
 
 - ドメインのテストは規則（今日の分はロックしない、締めの日は日曜・月末、転記が揃うまで締めの日をロックしない、Refs は一度だけ、など）を直接検証する
 - `application/run-maintenance.test.ts` はインメモリのリポジトリで、週・月が変わった最初の実行が「転記 → Refs → 週のまとめの消去 → 普通の日の移動 → ロック」の順に 1 回で進むこと、週末に月〜土の Daily を移すこと、週末に移した日を週のまとめの節から月のまとめへ写してから週のまとめを消すこと、週のまとめの節を受け付けなければ注記にせず止めること、締めの日の Daily が無ければ作ってから書くこと、前の月の週のまとめと前の月の日を書かないこと、日曜と月末が重なる日は月のまとめだけを書くこと、本文が空の日曜をゴミ箱へ移すこと、本文を写せなかった日の Daily は移さず画像・ファイルの案内だけの日は移すこと、Refs の追記や週のまとめの消去に失敗したらロックしないこと、その実行でも今日の習慣ページは作られていることを検証する
+- `cron/src/dispatch.test.ts` と `cron/src/index.test.ts` は、Worker が送るリクエスト（宛先・認証・ヘッダー・本文 `{"ref":"main"}`）と、204 以外・通信の失敗・トークン未設定で例外を投げ、例外にトークンを載せないことを検証する
 
 ## コード構成
 
@@ -207,6 +258,17 @@ src/
 ```
 
 日誌のリポジトリ（`DiaryRepository`）と習慣のリポジトリ（`HabitRepository`）は、別のデータベースなので分けている。
+
+Cloudflare Workers の Worker は `cron/` に置く。`src/` の層には入れず、`src/` のコードも読まない。
+
+```
+cron/
+  wrangler.jsonc     Worker の設定。Cron Trigger（UTC 23 17 と 23 22）
+  package.json       wrangler だけを依存に持つ。GitHub Actions の npm ci には入らない
+  src/
+    index.ts         Worker の入口。scheduled で dispatchMaintain を呼ぶ。workerd は入口の export をすべてハンドラーとして読むので、default だけを export する
+    dispatch.ts      maintain.yml の workflow_dispatch を呼ぶ。204 以外は例外にする
+```
 
 ## 日付の扱い
 

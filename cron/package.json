@@ -1,0 +1,9 @@
+{
+  "name": "notion-workers-cron",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}
